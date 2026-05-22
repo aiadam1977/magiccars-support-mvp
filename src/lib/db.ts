@@ -72,7 +72,7 @@ export interface ServiceCase {
 
 export async function createSession(session: VisualSession): Promise<VisualSession> {
   await kv.set(`mc:session:${session.session_id}`, session)
-  await kv.lpush('mc:sessions', session.session_id)
+  await kv.zadd('mc:sessions', { score: Date.now(), member: session.session_id })
   return session
 }
 
@@ -96,21 +96,20 @@ export async function updateSession(
 }
 
 export async function getAllSessions(): Promise<VisualSession[]> {
-  const ids = await kv.lrange<string>('mc:sessions', 0, -1)
+  // zrange with rev:true returns newest (highest score) first
+  const ids = await kv.zrange<string[]>('mc:sessions', 0, -1, { rev: true })
   if (!ids || ids.length === 0) return []
   const sessions = await Promise.all(
     ids.map(id => kv.get<VisualSession>(`mc:session:${id}`))
   )
-  return sessions
-    .filter((s): s is VisualSession => s !== null)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  return sessions.filter((s): s is VisualSession => s !== null)
 }
 
 // ─── Cases ───────────────────────────────────────────────────────────────────
 
 export async function createCase(serviceCase: ServiceCase): Promise<ServiceCase> {
   await kv.set(`mc:case:${serviceCase.case_id}`, serviceCase)
-  await kv.lpush('mc:cases', serviceCase.case_id)
+  await kv.zadd('mc:cases', { score: Date.now(), member: serviceCase.case_id })
   return serviceCase
 }
 
@@ -119,12 +118,11 @@ export async function getCase(case_id: string): Promise<ServiceCase | null> {
 }
 
 export async function getAllCases(): Promise<ServiceCase[]> {
-  const ids = await kv.lrange<string>('mc:cases', 0, -1)
+  // zrange with rev:true returns newest (highest score) first
+  const ids = await kv.zrange<string[]>('mc:cases', 0, -1, { rev: true })
   if (!ids || ids.length === 0) return []
   const cases = await Promise.all(
     ids.map(id => kv.get<ServiceCase>(`mc:case:${id}`))
   )
-  return cases
-    .filter((c): c is ServiceCase => c !== null)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  return cases.filter((c): c is ServiceCase => c !== null)
 }
