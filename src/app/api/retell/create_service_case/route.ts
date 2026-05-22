@@ -26,7 +26,9 @@ export async function POST(req: NextRequest) {
     } = body
 
     const case_id = `MC-${Date.now().toString(36).toUpperCase()}`
-    const base_url = process.env.APP_BASE_URL || 'http://localhost:3000'
+    const proto = req.headers.get('x-forwarded-proto') || 'http'
+    const host = req.headers.get('host') || 'localhost:3000'
+    const base_url = process.env.APP_BASE_URL || `${proto}://${host}`
     const case_url = `${base_url}/cases/${case_id}`
     const now = new Date().toISOString()
 
