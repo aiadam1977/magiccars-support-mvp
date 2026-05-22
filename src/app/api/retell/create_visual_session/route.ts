@@ -2,13 +2,45 @@
  * POST /api/retell/create_visual_session
  *
  * Called by Retell AI when the agent wants the caller to upload a photo or video.
- * Creates a visual diagnostic session and emails the secure upload link to the caller.
+ * Creates a visual diagnostic session and sends the upload link via Twilio SMS.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import { createSession, VisualSession } from '@/lib/db'
-import { sendEmail } from '@/lib/email'
+
+async function sendSms(to: string, body: string): Promise<{ success: boolean; error?: string }> {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+  const fromNumber = process.env.TWILIO_FROM_NUMBER
+
+  if (!accountSid || !authToken || !fromNumber) {
+    console.warn('[create_visual_session] Twilio credentials not configured — SMS not sent')
+    return { success: false, error: 'Twilio credentials not configured' }
+  }
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
+  const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+
+  const params = new URLSearchParams({ To: to, From: fromNumber, Body: body })
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    console.error('[create_visual_session] Twilio error:', response.status, errorBody)
+    return { success: false, error: `Twilio ${response.status}: ${errorBody}` }
+  }
+
+  return { success: true }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,52 +90,31 @@ export async function POST(req: NextRequest) {
 
     await createSession(session)
 
-    // Send the upload link via email if an address was provided
-    let email_sent = false
-    if (caller_email) {
-      try {
-        const firstName = caller_name.split(' ')[0] || caller_name
-        const htmlBody = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #cc0000;">MagicCars Visual Diagnostic</h2>
-            <p>Hi ${firstName},</p>
-            <p>Harold from MagicCars Technical Support has created a secure upload link for you.
-               Please use the button below to upload a photo or short video of your vehicle issue so our system can analyze it right away.</p>
-            <div style="text-align: center; margin: 32px 0;">
-              <a href="${upload_url}"
-                 style="background: #cc0000; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">
-                Upload Photo / Video
-              </a>
-            </div>
-            <p style="color: #666; font-size: 13px;">Or copy this link into your browser:<br>
-              <a href="${upload_url}" style="color: #cc0000;">${upload_url}</a>
-            </p>
-            <p style="color: #666; font-size: 12px;">This link is unique to your support session and expires after your call.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
-            <p style="color: #999; font-size: 11px;">MagicCars Technical Support</p>
-          </div>
-        `
-        await sendEmail(
-          caller_email,
-          'MagicCars — Your Diagnostic Upload Link',
-          htmlBody,
-          'MagicCars Support'
-        )
-        email_sent = true
-      } catch (emailErr) {
-        // Non-fatal — session is still created, agent can read the URL aloud as fallback
-        console.error('[create_visual_session] Email send failed:', emailErr)
-      }
+    // Send the upload link via Twilio SMS
+    let sms_sent = false
+    let sms_error: string | undefined
+
+    const smsTarget = caller_phone || caller_email // fall back to email field if phone was passed there
+    if (caller_phone) {
+      const firstName = caller_name.split(' ')[0] || caller_name
+      const message = `Hi ${firstName}, here is your MagicCars diagnostic upload link. Please open it and upload a photo or short video of the issue so Harold can analyze it right away:\n\n${upload_url}`
+
+      const smsResult = await sendSms(caller_phone, message)
+      sms_sent = smsResult.success
+      sms_error = smsResult.error
     }
+
+    void smsTarget // suppress unused warning
 
     return NextResponse.json({
       success: true,
       session_id,
       upload_url,
-      email_sent,
-      message: email_sent
-        ? `Upload link emailed to ${caller_email}. Caller should check their inbox.`
-        : 'Upload link created. No email address provided — read the link to the caller or have them check their inbox if email was collected.',
+      sms_sent,
+      ...(sms_error && { sms_error }),
+      message: sms_sent
+        ? `Upload link sent via SMS to ${caller_phone}.`
+        : `Upload link created. SMS not sent${sms_error ? ': ' + sms_error : ' — Twilio not configured'}.`,
     })
   } catch (err) {
     console.error('[create_visual_session] Error:', err)
