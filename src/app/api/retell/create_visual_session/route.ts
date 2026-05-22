@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
     } = body
 
     const caller_phone = await resolveCallerPhone(raw_phone, call_id)
+    const debug_kv_last = await getLastCallPhone()
 
     const session_id = uuidv4()
     const base_url = process.env.APP_BASE_URL || 'https://magiccars-support-mvp.vercel.app'
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
       sms_sent,
       debug_call_id: call_id || 'NOT_PROVIDED',
       debug_phone: caller_phone || 'NOT_RESOLVED',
+      debug_kv_last: debug_kv_last || 'KV_EMPTY',
       ...(sms_error && { sms_error }),
       message: sms_sent
         ? `Upload link sent via SMS to ${caller_phone}.`
