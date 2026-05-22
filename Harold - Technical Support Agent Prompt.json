@@ -31,7 +31,7 @@
       {
         "name": "create_visual_session",
         "type": "custom",
-        "description": "Call this when the caller agrees to upload a photo or video of their technical issue. This creates a secure upload session and sends the upload link to the caller via SMS. Returns a session_id (store this for get_visual_analysis) and an upload_url. Do not read the upload_url aloud.",
+        "description": "Call this when the caller agrees to upload a photo or video of their technical issue. This creates a secure upload session and sends the upload link to the caller via SMS. Returns a session_id (store this for get_visual_analysis) and an upload_url. Do not read the upload_url aloud. IMPORTANT: Only call this tool after you have collected the caller's full name in Step 2.",
         "speak_during_execution": true,
         "speak_after_execution": false,
         "url": "https://magiccars-support-mvp.vercel.app/api/retell/create_visual_session",
@@ -53,7 +53,7 @@
             },
             "caller_name": {
               "type": "string",
-              "description": "The caller's full name"
+              "description": "The caller's full name as collected during Step 2 of the call. Must be their real name — never pass 'Unknown', 'Unknown Caller', or a placeholder. You must have confirmed the caller's name before calling this tool."
             },
             "vehicle_make": {
               "type": "string",

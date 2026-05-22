@@ -65,9 +65,12 @@ export interface AnalysisResult {
 
 export interface CallMetadata {
   call_id: string
+  /** Caller's phone number — populated from from_number on call_started */
+  from_number?: string
   recording_url?: string
   public_log_url?: string
   transcript?: string
+  transcript_object?: Array<{ role: 'agent' | 'user'; content: string; words: unknown[] }>
   duration_ms?: number
   start_timestamp?: number
   end_timestamp?: number
@@ -75,6 +78,14 @@ export interface CallMetadata {
   call_summary?: string
   call_completion_rating?: string
   dynamic_variables?: Record<string, unknown>
+  /**
+   * Structured fields extracted by Retell post_call_analysis_data.
+   * Keys match the names defined in the Harold LLM config:
+   * issue_category, vehicle_model, recommended_route, resolution_provided,
+   * service_case_created, visual_diagnostic_used, caller_satisfaction,
+   * follow_up_required, caller_email, session_id, case_id
+   */
+  custom_analysis_data?: Record<string, string>
   stored_at: string
 }
 
@@ -269,4 +280,54 @@ export async function getAllTemplates(): Promise<EmailTemplate[]> {
     ids.map(id => kv.get<EmailTemplate>(`mc:template:${id}`))
   )
   return templates.filter((t): t is EmailTemplate => t !== null)
+}
+
+// ─── Call Metadata ────────────────────────────────────────────────────────────
+// Every call gets a record in mc:call-meta:{call_id} and an entry in mc:call-ids.
+// Populated in two phases:
+//   1. call_started webhook — initialises the record with from_number
+//   2. call_analyzed webhook — merges in transcript, analysis, custom_analysis_data
+
+export async function initCallMeta(call_id: string, from_number: string): Promise<void> {
+  const existing = await kv.get<CallMetadata>(`mc:call-meta:${call_id}`)
+  if (!existing) {
+    const meta: CallMetadata = { call_id, from_number, stored_at: new Date().toISOString() }
+    await kv.set(`mc:call-meta:${call_id}`, meta)
+    await prependId('mc:call-ids', call_id)
+  }
+}
+
+export async function upsertCallMeta(
+  call_id: string,
+  updates: Partial<CallMetadata>
+): Promise<CallMetadata> {
+  const existing = await kv.get<CallMetadata>(`mc:call-meta:${call_id}`)
+  const merged: CallMetadata = {
+    call_id,
+    stored_at: new Date().toISOString(),
+    ...(existing ?? {}),
+    ...updates,
+    // Deep-merge custom_analysis_data so call_started fields aren't wiped
+    custom_analysis_data: {
+      ...(existing?.custom_analysis_data ?? {}),
+      ...(updates.custom_analysis_data ?? {}),
+    },
+  }
+  await kv.set(`mc:call-meta:${call_id}`, merged)
+  if (!existing) {
+    await prependId('mc:call-ids', call_id)
+  }
+  return merged
+}
+
+export async function getCallMeta(call_id: string): Promise<CallMetadata | null> {
+  return await kv.get<CallMetadata>(`mc:call-meta:${call_id}`)
+}
+
+export async function getAllCallMeta(): Promise<CallMetadata[]> {
+  const raw = await kv.get('mc:call-ids')
+  const ids: string[] = Array.isArray(raw) ? raw : []
+  if (ids.length === 0) return []
+  const metas = await Promise.all(ids.map(id => kv.get<CallMetadata>(`mc:call-meta:${id}`)))
+  return metas.filter((m): m is CallMetadata => m !== null)
 }

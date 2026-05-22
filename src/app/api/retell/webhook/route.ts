@@ -16,11 +16,17 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getAllCases, getCase, saveCallPhone } from '@/lib/db'
+import {
+  getAllCases,
+  getCase,
+  saveCallPhone,
+  initCallMeta,
+  upsertCallMeta,
+  type CallMetadata,
+} from '@/lib/db'
 import { createClient } from '@vercel/kv'
 
-// We need a custom kv client here since this file doesn't import from db.ts directly.
-// Using the same safe config as db.ts.
+// Direct KV client for case updates that aren't yet abstracted in db.ts.
 const kv = createClient({
   url: process.env.KV_REST_API_URL!,
   token: process.env.KV_REST_API_TOKEN!,
@@ -75,24 +81,6 @@ interface RetellWebhookPayload {
   call: RetellCallObject
 }
 
-// ─── Stored call metadata shape ───────────────────────────────────────────────
-
-export interface CallMetadata {
-  call_id: string
-  recording_url?: string
-  public_log_url?: string
-  transcript?: string
-  transcript_object?: RetellTranscriptUtterance[]
-  duration_ms?: number
-  start_timestamp?: number
-  end_timestamp?: number
-  user_sentiment?: string
-  call_summary?: string
-  call_completion_rating?: string
-  dynamic_variables?: Record<string, unknown>
-  stored_at: string
-}
-
 // ─── Signature verification (optional but recommended) ────────────────────────
 
 // async function verifySignature(req: NextRequest, rawBody: string): Promise<boolean> {
@@ -119,8 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'No call_id in payload.' }, { status: 400 })
     }
 
-    // On call_started: cache the caller's phone number immediately.
-    // create_visual_session reads this from KV so it never depends on the LLM passing it.
+    // On call_started: cache the caller's phone number and initialise the call record.
     if (payload.event === 'call_started') {
       console.info(`[webhook] call_started full payload: ${JSON.stringify(payload)}`)
       const phone = call.from_number ?? ''
@@ -130,6 +117,9 @@ export async function POST(req: NextRequest) {
       } else {
         console.warn(`[webhook] call_started — no from_number in payload for call ${call.call_id}`)
       }
+      // Create the initial call-meta record so every call appears in the All Calls view,
+      // even if the post-call webhook never fires.
+      await initCallMeta(call.call_id, phone)
       return NextResponse.json({ success: true, event: 'call_started', call_id: call.call_id, phone_cached: !!phone })
     }
 
@@ -138,10 +128,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, skipped: true, reason: `Ignored event: ${payload.event}` })
     }
 
-    // Build the metadata object from whatever Retell sends
-    const meta: CallMetadata = {
-      call_id: call.call_id,
+    // Extract custom_analysis_data (post_call_analysis_data fields from Harold LLM config)
+    const rawCustom = call.call_analysis?.custom_analysis_data
+    const custom_analysis_data: Record<string, string> | undefined =
+      rawCustom && typeof rawCustom === 'object' && !Array.isArray(rawCustom)
+        ? Object.fromEntries(
+            Object.entries(rawCustom).map(([k, v]) => [k, String(v ?? '')])
+          )
+        : undefined
+
+    // Build the metadata update — upsertCallMeta deep-merges with the existing record
+    // so from_number set during call_started is preserved.
+    const metaUpdate: Partial<CallMetadata> = {
       stored_at: new Date().toISOString(),
+      ...(call.from_number && { from_number: call.from_number }),
       ...(call.recording_url && { recording_url: call.recording_url }),
       ...(call.public_log_url && { public_log_url: call.public_log_url }),
       ...(call.transcript && { transcript: call.transcript }),
@@ -157,10 +157,10 @@ export async function POST(req: NextRequest) {
       ...(call.retell_llm_dynamic_variables && {
         dynamic_variables: call.retell_llm_dynamic_variables,
       }),
+      ...(custom_analysis_data && { custom_analysis_data }),
     }
 
-    // Store metadata indexed by call_id — always available via /api/call-meta/[call_id]
-    await kv.set(`mc:call-meta:${call.call_id}`, meta)
+    const meta = await upsertCallMeta(call.call_id, metaUpdate)
 
     // Attempt to match this call to a case by call_id and attach the metadata
     let matched = false
