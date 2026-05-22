@@ -2,12 +2,11 @@
  * POST /api/upload/:session_id
  *
  * Receives photo or video upload from the caller.
- * Stores file locally and triggers background analysis.
+ * Stores file in Vercel Blob and runs AI analysis synchronously.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import path from 'path'
-import fs from 'fs'
+import { put } from '@vercel/blob'
 import { getSession, updateSession } from '@/lib/db'
 import { runAnalysis } from '@/lib/analysis'
 
@@ -28,7 +27,7 @@ export async function POST(
   try {
     const { session_id } = params
 
-    const session = getSession(session_id)
+    const session = await getSession(session_id)
     if (!session) {
       return NextResponse.json({ success: false, error: 'Session not found.' }, { status: 404 })
     }
@@ -72,37 +71,40 @@ export async function POST(
       )
     }
 
-    // Save file to local storage
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', session_id)
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true })
-    }
-
+    // Upload to Vercel Blob
     const ext = file.name.split('.').pop() || (isImage ? 'jpg' : 'mp4')
     const fileName = `upload.${ext}`
-    const filePath = path.join(uploadDir, fileName)
-
     const arrayBuffer = await file.arrayBuffer()
-    fs.writeFileSync(filePath, Buffer.from(arrayBuffer))
+
+    const blob = await put(`sessions/${session_id}/${fileName}`, Buffer.from(arrayBuffer), {
+      access: 'public',
+    })
 
     // Update session to uploaded status
-    updateSession(session_id, {
+    await updateSession(session_id, {
       status: 'uploaded',
-      file_path: filePath,
+      file_path: blob.url,
       file_name: fileName,
       file_type: fileType,
       note: note || undefined,
     })
 
-    // Trigger analysis asynchronously (fire and forget for demo)
-    triggerAnalysis(
-      session_id,
-      filePath,
-      fileType,
-      session.issue_type,
-      session.issue_description,
-      note || undefined
-    )
+    // Run analysis synchronously (works reliably in Vercel serverless)
+    await updateSession(session_id, { status: 'analyzing' })
+
+    try {
+      const analysis = await runAnalysis({
+        fileUrl: blob.url,
+        fileType,
+        issueType: session.issue_type,
+        issueDescription: session.issue_description,
+        note: note || undefined,
+      })
+      await updateSession(session_id, { status: 'complete', analysis })
+    } catch (err) {
+      console.error(`[upload] Analysis failed for session ${session_id}:`, err)
+      await updateSession(session_id, { status: 'error' })
+    }
 
     return NextResponse.json({
       success: true,
@@ -115,25 +117,5 @@ export async function POST(
       { success: false, error: 'Upload failed. Please try again.' },
       { status: 500 }
     )
-  }
-}
-
-async function triggerAnalysis(
-  session_id: string,
-  filePath: string,
-  fileType: string,
-  issueType: string,
-  issueDescription: string,
-  note?: string
-) {
-  try {
-    updateSession(session_id, { status: 'analyzing' })
-
-    const analysis = await runAnalysis({ filePath, fileType, issueType, issueDescription, note })
-
-    updateSession(session_id, { status: 'complete', analysis })
-  } catch (err) {
-    console.error(`[upload] Analysis failed for session ${session_id}:`, err)
-    updateSession(session_id, { status: 'error' })
   }
 }

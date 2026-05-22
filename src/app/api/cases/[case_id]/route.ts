@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     const { case_id } = params
-    const serviceCase = getCase(case_id)
+    const serviceCase = await getCase(case_id)
 
     if (!serviceCase) {
       return NextResponse.json({ success: false, error: 'Case not found.' }, { status: 404 })

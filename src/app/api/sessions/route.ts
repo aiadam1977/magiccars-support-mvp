@@ -9,7 +9,7 @@ import { getAllSessions } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
-    const sessions = getAllSessions()
+    const sessions = await getAllSessions()
     return NextResponse.json({ success: true, sessions, total: sessions.length })
   } catch (err) {
     console.error('[GET /api/sessions] Error:', err)

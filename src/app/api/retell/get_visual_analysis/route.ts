@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const session = getSession(session_id)
+    const session = await getSession(session_id)
 
     if (!session) {
       return NextResponse.json(

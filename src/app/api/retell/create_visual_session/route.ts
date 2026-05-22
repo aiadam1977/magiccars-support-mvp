@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       updated_at: now,
     }
 
-    createSession(session)
+    await createSession(session)
 
     return NextResponse.json({
       success: true,

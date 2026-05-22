@@ -5,8 +5,6 @@
  * Falls back to deterministic demo analysis based on issue type.
  */
 
-import fs from 'fs'
-import path from 'path'
 import { AnalysisResult } from './db'
 import { matchKnowledgeEntry, getKnowledgeBasePrompt } from './knowledge-base'
 
@@ -45,20 +43,21 @@ Return ONLY a valid JSON object with exactly these fields:
 
 /**
  * Run visual AI analysis on an uploaded file.
+ * fileUrl is either a Vercel Blob public URL (https://...) or empty string for demo mode.
  */
 export async function runAnalysis(params: {
-  filePath: string
+  fileUrl: string
   fileType: string
   issueType: string
   issueDescription: string
   note?: string
 }): Promise<AnalysisResult> {
-  const { filePath, fileType, issueType, issueDescription, note } = params
+  const { fileUrl, fileType, issueType, issueDescription, note } = params
 
   // Try OpenAI if key is set and file is an image
-  if (process.env.OPENAI_API_KEY && isImage(fileType)) {
+  if (process.env.OPENAI_API_KEY && isImage(fileType) && fileUrl.startsWith('https://')) {
     try {
-      return await runOpenAIAnalysis({ filePath, issueType, issueDescription, note })
+      return await runOpenAIAnalysis({ fileUrl, fileType, issueType, issueDescription, note })
     } catch (err) {
       console.error('[Analysis] OpenAI vision failed, falling back to demo:', err)
     }
@@ -73,7 +72,8 @@ function isImage(fileType: string): boolean {
 }
 
 async function runOpenAIAnalysis(params: {
-  filePath: string
+  fileUrl: string
+  fileType: string
   issueType: string
   issueDescription: string
   note?: string
@@ -81,14 +81,14 @@ async function runOpenAIAnalysis(params: {
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-  const imageData = fs.readFileSync(params.filePath)
-  const base64 = imageData.toString('base64')
-  const ext = path.extname(params.filePath).toLowerCase().replace('.', '')
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
-    gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
+  // Fetch image from Vercel Blob URL and encode as base64
+  const response = await fetch(params.fileUrl)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from blob: ${response.status}`)
   }
-  const mimeType = mimeMap[ext] || 'image/jpeg'
+  const arrayBuffer = await response.arrayBuffer()
+  const base64 = Buffer.from(arrayBuffer).toString('base64')
+  const mimeType = params.fileType || 'image/jpeg'
 
   const prompt = VISION_PROMPT
     .replace('{{KNOWLEDGE_BASE}}', getKnowledgeBasePrompt())
@@ -98,7 +98,7 @@ async function runOpenAIAnalysis(params: {
 
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 
-  const response = await client.chat.completions.create({
+  const completion = await client.chat.completions.create({
     model,
     messages: [
       {
@@ -115,7 +115,7 @@ async function runOpenAIAnalysis(params: {
     max_tokens: 1200,
   })
 
-  const content = response.choices[0]?.message?.content || ''
+  const content = completion.choices[0]?.message?.content || ''
   // Extract JSON from the response
   const jsonMatch = content.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No JSON in OpenAI response')

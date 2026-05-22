@@ -1,14 +1,11 @@
 /**
- * MagicCars Support MVP — Local JSON Database
+ * MagicCars Support MVP — Vercel KV Database
  *
- * A simple file-based store for demo purposes.
- * In production, replace with a real database (Postgres, MySQL, etc.)
+ * All functions are async and backed by Vercel KV (Redis).
+ * Replaces the local JSON file store that fails on Vercel's read-only filesystem.
  */
 
-import fs from 'fs'
-import path from 'path'
-
-const DB_PATH = path.join(process.cwd(), 'data', 'db.json')
+import { kv } from '@vercel/kv'
 
 export interface VisualSession {
   session_id: string
@@ -71,91 +68,63 @@ export interface ServiceCase {
   updated_at: string
 }
 
-interface DB {
-  sessions: Record<string, VisualSession>
-  cases: Record<string, ServiceCase>
-}
-
-function ensureDataDir() {
-  const dir = path.dirname(DB_PATH)
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-}
-
-function readDB(): DB {
-  ensureDataDir()
-  if (!fs.existsSync(DB_PATH)) {
-    const empty: DB = { sessions: {}, cases: {} }
-    fs.writeFileSync(DB_PATH, JSON.stringify(empty, null, 2))
-    return empty
-  }
-  try {
-    const raw = fs.readFileSync(DB_PATH, 'utf-8')
-    return JSON.parse(raw) as DB
-  } catch {
-    const empty: DB = { sessions: {}, cases: {} }
-    fs.writeFileSync(DB_PATH, JSON.stringify(empty, null, 2))
-    return empty
-  }
-}
-
-function writeDB(db: DB): void {
-  ensureDataDir()
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2))
-}
-
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
-export function createSession(session: VisualSession): VisualSession {
-  const db = readDB()
-  db.sessions[session.session_id] = session
-  writeDB(db)
+export async function createSession(session: VisualSession): Promise<VisualSession> {
+  await kv.set(`mc:session:${session.session_id}`, session)
+  await kv.lpush('mc:sessions', session.session_id)
   return session
 }
 
-export function getSession(session_id: string): VisualSession | null {
-  const db = readDB()
-  return db.sessions[session_id] ?? null
+export async function getSession(session_id: string): Promise<VisualSession | null> {
+  return await kv.get<VisualSession>(`mc:session:${session_id}`)
 }
 
-export function updateSession(
+export async function updateSession(
   session_id: string,
   updates: Partial<VisualSession>
-): VisualSession | null {
-  const db = readDB()
-  const existing = db.sessions[session_id]
+): Promise<VisualSession | null> {
+  const existing = await kv.get<VisualSession>(`mc:session:${session_id}`)
   if (!existing) return null
-  const updated = { ...existing, ...updates, updated_at: new Date().toISOString() }
-  db.sessions[session_id] = updated
-  writeDB(db)
+  const updated: VisualSession = {
+    ...existing,
+    ...updates,
+    updated_at: new Date().toISOString(),
+  }
+  await kv.set(`mc:session:${session_id}`, updated)
   return updated
 }
 
-export function getAllSessions(): VisualSession[] {
-  const db = readDB()
-  return Object.values(db.sessions).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+export async function getAllSessions(): Promise<VisualSession[]> {
+  const ids = await kv.lrange<string>('mc:sessions', 0, -1)
+  if (!ids || ids.length === 0) return []
+  const sessions = await Promise.all(
+    ids.map(id => kv.get<VisualSession>(`mc:session:${id}`))
   )
+  return sessions
+    .filter((s): s is VisualSession => s !== null)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
 // ─── Cases ───────────────────────────────────────────────────────────────────
 
-export function createCase(serviceCase: ServiceCase): ServiceCase {
-  const db = readDB()
-  db.cases[serviceCase.case_id] = serviceCase
-  writeDB(db)
+export async function createCase(serviceCase: ServiceCase): Promise<ServiceCase> {
+  await kv.set(`mc:case:${serviceCase.case_id}`, serviceCase)
+  await kv.lpush('mc:cases', serviceCase.case_id)
   return serviceCase
 }
 
-export function getCase(case_id: string): ServiceCase | null {
-  const db = readDB()
-  return db.cases[case_id] ?? null
+export async function getCase(case_id: string): Promise<ServiceCase | null> {
+  return await kv.get<ServiceCase>(`mc:case:${case_id}`)
 }
 
-export function getAllCases(): ServiceCase[] {
-  const db = readDB()
-  return Object.values(db.cases).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+export async function getAllCases(): Promise<ServiceCase[]> {
+  const ids = await kv.lrange<string>('mc:cases', 0, -1)
+  if (!ids || ids.length === 0) return []
+  const cases = await Promise.all(
+    ids.map(id => kv.get<ServiceCase>(`mc:case:${id}`))
   )
+  return cases
+    .filter((c): c is ServiceCase => c !== null)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }

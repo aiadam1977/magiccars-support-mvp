@@ -9,7 +9,7 @@ import { getAllCases } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
-    const cases = getAllCases()
+    const cases = await getAllCases()
     return NextResponse.json({ success: true, cases, total: cases.length })
   } catch (err) {
     console.error('[GET /api/cases] Error:', err)

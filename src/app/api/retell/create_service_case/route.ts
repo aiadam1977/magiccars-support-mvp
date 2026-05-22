@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString()
 
     // Pull analysis and media from session if available
-    const session = session_id ? getSession(session_id) : null
+    const session = session_id ? await getSession(session_id) : null
 
     const serviceCase: ServiceCase = {
       case_id,
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       updated_at: now,
     }
 
-    createCase(serviceCase)
+    await createCase(serviceCase)
 
     return NextResponse.json({
       success: true,

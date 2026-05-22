@@ -18,7 +18,7 @@ export async function POST(
   try {
     const { session_id } = params
 
-    const session = getSession(session_id)
+    const session = await getSession(session_id)
     if (!session) {
       return NextResponse.json({ success: false, error: 'Session not found.' }, { status: 404 })
     }
@@ -31,17 +31,17 @@ export async function POST(
     }
 
     // Allow re-analysis even if already complete (for demo)
-    updateSession(session_id, { status: 'analyzing' })
+    await updateSession(session_id, { status: 'analyzing' })
 
     const analysis = await runAnalysis({
-      filePath: session.file_path || '',
+      fileUrl: session.file_path || '',
       fileType: session.file_type || 'image/jpeg',
       issueType: session.issue_type,
       issueDescription: session.issue_description,
       note: session.note,
     })
 
-    updateSession(session_id, { status: 'complete', analysis })
+    await updateSession(session_id, { status: 'complete', analysis })
 
     return NextResponse.json({
       success: true,
@@ -51,7 +51,7 @@ export async function POST(
     })
   } catch (err) {
     console.error('[analyze] Error:', err)
-    updateSession(params.session_id, { status: 'error' })
+    await updateSession(params.session_id, { status: 'error' })
     return NextResponse.json(
       { success: false, error: 'Analysis failed. Please try again.' },
       { status: 500 }
@@ -64,7 +64,7 @@ export async function GET(
   { params }: { params: { session_id: string } }
 ) {
   const { session_id } = params
-  const session = getSession(session_id)
+  const session = await getSession(session_id)
 
   if (!session) {
     return NextResponse.json({ success: false, error: 'Session not found.' }, { status: 404 })

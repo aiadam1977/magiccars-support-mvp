@@ -125,10 +125,8 @@ export default function CaseDetailPage() {
   const a = serviceCase.analysis
   const isSafety = serviceCase.recommended_route === 'safety_stop'
   const isImage = serviceCase.file_type?.startsWith('image/')
-  const mediaUrl =
-    serviceCase.session_id && serviceCase.file_name
-      ? `/uploads/${serviceCase.session_id}/${serviceCase.file_name}`
-      : null
+  // file_path is now a Vercel Blob public URL (https://...)
+  const mediaUrl = serviceCase.file_path || null
 
   return (
     <div className="min-h-screen bg-slate-50">
