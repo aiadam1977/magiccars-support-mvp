@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { createSession, getCallPhone, VisualSession } from '@/lib/db'
+import { createSession, getCallPhone, getLastCallPhone, VisualSession } from '@/lib/db'
 
 /** Returns true if the string is an uninterpolated Retell template like {{from_number}} */
 function isTemplateLiteral(val: string): boolean {
@@ -23,51 +23,19 @@ async function resolveCallerPhone(
   body_phone: string,
   call_id: string
 ): Promise<string> {
-  // 1. KV cache — populated by webhook on call_started, available before any tool call
+  // 1. KV by call_id — populated by webhook on call_started
   if (call_id) {
     const cached = await getCallPhone(call_id)
-    if (cached) {
-      console.info(`[create_visual_session] phone from KV cache: ${cached}`)
-      return cached
-    }
+    if (cached) return cached
   }
 
-  // 2. Body param — if LLM passed it and it's not an uninterpolated template
-  if (body_phone && !isTemplateLiteral(body_phone)) {
-    console.info(`[create_visual_session] phone from body param: ${body_phone}`)
-    return body_phone
-  }
+  // 2. Body param — if LLM passed a real phone number
+  if (body_phone && !isTemplateLiteral(body_phone)) return body_phone
 
-  // 3. Retell API — direct lookup as final fallback
-  if (call_id) {
-    const retellKey = process.env.RETELL_API_KEY
-    if (!retellKey) {
-      console.warn('[create_visual_session] RETELL_API_KEY not set — cannot call Retell API')
-    } else {
-      for (const url of [
-        `https://api.retellai.com/v2/get-call/${call_id}`,
-        `https://api.retellai.com/get-call/${call_id}`,
-      ]) {
-        try {
-          const res = await fetch(url, { headers: { Authorization: `Bearer ${retellKey}` } })
-          if (!res.ok) {
-            const errBody = await res.text()
-            console.warn(`[create_visual_session] Retell API ${res.status} (${url}): ${errBody}`)
-            continue
-          }
-          const data = await res.json() as { from_number?: string }
-          if (data.from_number) {
-            console.info(`[create_visual_session] phone from Retell API (${url}): ${data.from_number}`)
-            return data.from_number
-          }
-          console.warn(`[create_visual_session] Retell API OK but no from_number (${url}): ${JSON.stringify(data).slice(0, 300)}`)
-          break // don't try v1 if v2 responded but had no field
-        } catch (err) {
-          console.error(`[create_visual_session] Retell API fetch error (${url}):`, err)
-        }
-      }
-    }
-  }
+  // 3. Last-call fallback — set by call_started webhook, TTL 30 min.
+  //    Works reliably for a sequential support line even when Harold omits call_id.
+  const last = await getLastCallPhone()
+  if (last) return last
 
   return ''
 }

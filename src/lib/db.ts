@@ -124,10 +124,17 @@ export interface EmailTemplate {
 
 export async function saveCallPhone(call_id: string, phone: string): Promise<void> {
   await kv.set(`mc:call-phone:${call_id}`, phone, { ex: 60 * 60 * 24 }) // 24 h TTL
+  // Also store as the most-recent active call phone (30 min TTL) so
+  // create_visual_session can find it even when Harold omits call_id.
+  await kv.set('mc:last-call-phone', phone, { ex: 60 * 30 })
 }
 
 export async function getCallPhone(call_id: string): Promise<string | null> {
   return await kv.get<string>(`mc:call-phone:${call_id}`)
+}
+
+export async function getLastCallPhone(): Promise<string | null> {
+  return await kv.get<string>('mc:last-call-phone')
 }
 
 // ─── ID list helpers ─────────────────────────────────────────────────────────
