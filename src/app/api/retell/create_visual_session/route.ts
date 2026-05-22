@@ -172,6 +172,8 @@ export async function POST(req: NextRequest) {
       session_id,
       upload_url,
       sms_sent,
+      debug_call_id: call_id || 'NOT_PROVIDED',
+      debug_phone: caller_phone || 'NOT_RESOLVED',
       ...(sms_error && { sms_error }),
       message: sms_sent
         ? `Upload link sent via SMS to ${caller_phone}.`
