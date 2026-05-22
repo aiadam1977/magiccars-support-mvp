@@ -3,11 +3,45 @@
  *
  * Called by Retell AI when the agent wants the caller to upload a photo or video.
  * Creates a visual diagnostic session and sends the upload link via Twilio SMS.
+ *
+ * Phone number resolution order:
+ *   1. caller_phone parameter (if Harold passes it)
+ *   2. Retell GET /get-call/{call_id} → from_number  (fallback — never relies on LLM)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import { createSession, VisualSession } from '@/lib/db'
+
+async function resolveCallerPhone(
+  caller_phone: string,
+  call_id: string
+): Promise<string> {
+  if (caller_phone) return caller_phone
+
+  if (!call_id) return ''
+
+  const retellKey = process.env.RETELL_API_KEY
+  if (!retellKey) {
+    console.warn('[create_visual_session] RETELL_API_KEY not set — cannot resolve from_number')
+    return ''
+  }
+
+  try {
+    const res = await fetch(`https://api.retellai.com/get-call/${call_id}`, {
+      headers: { Authorization: `Bearer ${retellKey}` },
+    })
+    if (!res.ok) {
+      console.warn('[create_visual_session] Retell get-call failed:', res.status)
+      return ''
+    }
+    const data = await res.json() as { from_number?: string }
+    return data.from_number ?? ''
+  } catch (err) {
+    console.error('[create_visual_session] Error fetching call from Retell:', err)
+    return ''
+  }
+}
 
 async function sendSms(to: string, body: string): Promise<{ success: boolean; error?: string }> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID
@@ -21,7 +55,6 @@ async function sendSms(to: string, body: string): Promise<{ success: boolean; er
 
   const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
   const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
-
   const params = new URLSearchParams({ To: to, From: fromNumber, Body: body })
 
   const response = await fetch(url, {
@@ -48,7 +81,7 @@ export async function POST(req: NextRequest) {
 
     const {
       call_id = '',
-      caller_phone = '',
+      caller_phone: raw_phone = '',
       caller_email = '',
       caller_name = 'Unknown Caller',
       vehicle_id = 'magiccars-12v-2wd-jeep',
@@ -58,6 +91,9 @@ export async function POST(req: NextRequest) {
       issue_type = 'general',
       issue_description = '',
     } = body
+
+    // Always resolve the phone — falls back to Retell API if LLM didn't pass it
+    const caller_phone = await resolveCallerPhone(raw_phone, call_id)
 
     const session_id = uuidv4()
     const base_url = process.env.APP_BASE_URL || 'https://magiccars-support-mvp.vercel.app'
@@ -87,17 +123,20 @@ export async function POST(req: NextRequest) {
     let sms_sent = false
     let sms_error: string | undefined
 
-    const smsTarget = caller_phone || caller_email // fall back to email field if phone was passed there
     if (caller_phone) {
       const firstName = caller_name.split(' ')[0] || caller_name
-      const message = `Hi ${firstName}, here is your MagicCars diagnostic upload link. Please open it and upload a photo or short video of the issue so Harold can analyze it right away:\n\n${upload_url}`
+      const message =
+        `Hi ${firstName}, here is your MagicCars diagnostic upload link. ` +
+        `Please open it and upload a photo or short video of the issue so Harold can analyze it right away:\n\n${upload_url}`
 
       const smsResult = await sendSms(caller_phone, message)
       sms_sent = smsResult.success
       sms_error = smsResult.error
+    } else {
+      console.warn('[create_visual_session] No caller_phone resolved — SMS skipped')
     }
 
-    void smsTarget // suppress unused warning
+    void caller_email // not used for SMS delivery
 
     return NextResponse.json({
       success: true,
@@ -107,7 +146,9 @@ export async function POST(req: NextRequest) {
       ...(sms_error && { sms_error }),
       message: sms_sent
         ? `Upload link sent via SMS to ${caller_phone}.`
-        : `Upload link created. SMS not sent${sms_error ? ': ' + sms_error : ' — Twilio not configured'}.`,
+        : caller_phone
+          ? `Upload link created. SMS failed: ${sms_error ?? 'unknown error'}.`
+          : `Upload link created. SMS skipped — phone number not available.`,
     })
   } catch (err) {
     console.error('[create_visual_session] Error:', err)
