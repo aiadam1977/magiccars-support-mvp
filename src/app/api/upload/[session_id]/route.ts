@@ -88,13 +88,13 @@ export async function POST(
     try {
       const blob = await put(`sessions/${session_id}/${fileName}`, Buffer.from(arrayBuffer), {
         access: 'public',
+        token: process.env.BLOB_READ_WRITE_TOKEN,
       })
       blobUrl = blob.url
       console.log(`[upload] Blob stored: ${blobUrl}`)
     } catch (err) {
-      const details = err instanceof Error
-        ? { name: err.name, message: err.message, code: (err as Record<string, unknown>).code, status: (err as Record<string, unknown>).status }
-        : { raw: String(err) }
+      const e = err as unknown as Record<string, unknown>
+      const details = { name: e['name'], message: e['message'], code: e['code'], status: e['status'] }
       console.error(`[upload] Vercel Blob put() failed: ${JSON.stringify(details)}`)
       throw new Error(`Blob upload failed: ${JSON.stringify(details)}`)
     }
