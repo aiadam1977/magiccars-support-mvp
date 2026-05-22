@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
     // On call_started: cache the caller's phone number immediately.
     // create_visual_session reads this from KV so it never depends on the LLM passing it.
     if (payload.event === 'call_started') {
+      console.info(`[webhook] call_started full payload: ${JSON.stringify(payload)}`)
       const phone = call.from_number ?? ''
       if (phone) {
         await saveCallPhone(call.call_id, phone)
