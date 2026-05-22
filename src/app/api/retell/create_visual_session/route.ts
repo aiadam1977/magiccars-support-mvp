@@ -33,7 +33,9 @@ export async function POST(req: NextRequest) {
     }
 
     const session_id = uuidv4()
-    const base_url = process.env.APP_BASE_URL || 'http://localhost:3000'
+    const proto = req.headers.get('x-forwarded-proto') || 'http'
+    const host = req.headers.get('host') || 'localhost:3000'
+    const base_url = process.env.APP_BASE_URL || `${proto}://${host}`
     const upload_url = `${base_url}/upload/${session_id}`
     const now = new Date().toISOString()
 

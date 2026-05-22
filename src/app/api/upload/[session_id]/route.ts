@@ -74,16 +74,33 @@ export async function POST(
     // Upload to Vercel Blob
     const ext = file.name.split('.').pop() || (isImage ? 'jpg' : 'mp4')
     const fileName = `upload.${ext}`
-    const arrayBuffer = await file.arrayBuffer()
 
-    const blob = await put(`sessions/${session_id}/${fileName}`, Buffer.from(arrayBuffer), {
-      access: 'public',
-    })
+    let arrayBuffer: ArrayBuffer
+    try {
+      arrayBuffer = await file.arrayBuffer()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[upload] arrayBuffer failed: ${msg}`)
+      throw new Error(`file.arrayBuffer() failed: ${msg}`)
+    }
+
+    let blobUrl: string
+    try {
+      const blob = await put(`sessions/${session_id}/${fileName}`, Buffer.from(arrayBuffer), {
+        access: 'public',
+      })
+      blobUrl = blob.url
+      console.log(`[upload] Blob stored: ${blobUrl}`)
+    } catch (err) {
+      const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      console.error(`[upload] Vercel Blob put() failed: ${msg}`)
+      throw new Error(`Blob upload failed: ${msg}`)
+    }
 
     // Update session to uploaded status
     await updateSession(session_id, {
       status: 'uploaded',
-      file_path: blob.url,
+      file_path: blobUrl,
       file_name: fileName,
       file_type: fileType,
       note: note || undefined,
@@ -94,7 +111,7 @@ export async function POST(
 
     try {
       const analysis = await runAnalysis({
-        fileUrl: blob.url,
+        fileUrl: blobUrl,
         fileType,
         issueType: session.issue_type,
         issueDescription: session.issue_description,
@@ -112,7 +129,8 @@ export async function POST(
       message: 'Upload received. MagicCars Support is reviewing your media now.',
     })
   } catch (err) {
-    console.error('[upload] Error:', err)
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    console.error(`[upload] Error: ${msg}`)
     return NextResponse.json(
       { success: false, error: 'Upload failed. Please try again.' },
       { status: 500 }
