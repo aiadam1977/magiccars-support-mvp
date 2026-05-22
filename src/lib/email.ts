@@ -1,23 +1,12 @@
 /**
  * MagicCars Support MVP — Email Utility
  *
- * Variable substitution and a stubbed sendEmail function.
- * To go live, replace the sendEmail body with your chosen provider:
+ * Variable substitution and email sending via Resend.
+ * Requires RESEND_API_KEY env var set in Vercel and .env.local.
  *
- *   Resend:    npm install resend
- *              import { Resend } from 'resend'
- *              const resend = new Resend(process.env.RESEND_API_KEY)
- *              await resend.emails.send({ from, to, subject, html: body })
- *
- *   SendGrid:  npm install @sendgrid/mail
- *              import sgMail from '@sendgrid/mail'
- *              sgMail.setApiKey(process.env.SENDGRID_API_KEY!)
- *              await sgMail.send({ to, from, subject, html: body })
- *
- *   Postmark:  npm install postmark
- *              import { ServerClient } from 'postmark'
- *              const client = new ServerClient(process.env.POSTMARK_API_KEY!)
- *              await client.sendEmail({ From: from, To: to, Subject: subject, HtmlBody: body })
+ * From address: uses RESEND_FROM_EMAIL env var if set, otherwise falls back
+ * to "onboarding@resend.dev" which works on Resend's free plan without
+ * domain verification.
  */
 
 export interface TemplateVars {
@@ -49,51 +38,46 @@ export interface SendEmailResult {
 }
 
 /**
- * Send an email to a caller.
- * Currently stubbed — swap the body below for your chosen provider.
+ * Send an email via Resend.
+ * Set RESEND_API_KEY in your Vercel env vars and .env.local.
+ * Set RESEND_FROM_EMAIL to a verified sender (e.g. support@yourdomain.com).
+ * If RESEND_FROM_EMAIL is not set, falls back to onboarding@resend.dev which
+ * works on Resend free plan without domain verification.
  */
 export async function sendEmail(
   to: string,
   subject: string,
   body: string,
   fromName = 'MagicCars Support',
-  fromAddress = 'support@magiccars.com'
+  fromAddress?: string
 ): Promise<SendEmailResult> {
-  // ── TODO: Uncomment your provider below and add the env var to Vercel ──────
+  const apiKey = process.env.RESEND_API_KEY
 
-  // --- Resend ---
-  // const { Resend } = await import('resend')
-  // const resend = new Resend(process.env.RESEND_API_KEY)
-  // await resend.emails.send({
-  //   from: `${fromName} <${fromAddress}>`,
-  //   to,
-  //   subject,
-  //   html: body,
-  // })
-  // return { success: true, message: 'Sent via Resend', provider: 'resend' }
-
-  // --- SendGrid ---
-  // const sgMail = (await import('@sendgrid/mail')).default
-  // sgMail.setApiKey(process.env.SENDGRID_API_KEY!)
-  // await sgMail.send({ to, from: { name: fromName, email: fromAddress }, subject, html: body })
-  // return { success: true, message: 'Sent via SendGrid', provider: 'sendgrid' }
-
-  // ── Stub (no provider configured) ────────────────────────────────────────
-  void fromName
-  void fromAddress
-  // In development/staging, log what would have been sent
-  if (process.env.NODE_ENV !== 'production') {
+  if (!apiKey) {
+    // No Resend key — log and return success stub so the call doesn't fail
     /* eslint-disable no-console */
-    console.info('[email:stub] ─────────────────────────────────')
+    console.info('[email:stub] RESEND_API_KEY not set — email not sent')
     console.info('[email:stub] To:     ', to)
     console.info('[email:stub] Subject:', subject)
-    console.info('[email:stub] Body preview:', body.slice(0, 200))
-    console.info('[email:stub] ─────────────────────────────────')
     /* eslint-enable no-console */
+    return { success: true, message: 'Email skipped — RESEND_API_KEY not configured', provider: 'stub' }
   }
-  return {
-    success: true,
-    message: 'Email logged (no provider configured — see src/lib/email.ts to wire one up)',
-    provider: 'stub',
+
+  const from = fromAddress ?? process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev'
+
+  const { Resend } = await import('resend')
+  const resend = new Resend(apiKey)
+
+  const result = await resend.emails.send({
+    from: `${fromName} <${from}>`,
+    to,
+    subject,
+    html: body,
+  })
+
+  if (result.error) {
+    throw new Error(`Resend error: ${result.error.message}`)
   }
+
+  return { success: true, message: `Sent via Resend (id: ${result.data?.id})`, provider: 'resend' }
 }
