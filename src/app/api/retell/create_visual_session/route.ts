@@ -59,13 +59,6 @@ export async function POST(req: NextRequest) {
       issue_description = '',
     } = body
 
-    if (!caller_phone && !call_id) {
-      return NextResponse.json(
-        { success: false, error: 'caller_phone or call_id is required.' },
-        { status: 400 }
-      )
-    }
-
     const session_id = uuidv4()
     const base_url = process.env.APP_BASE_URL || 'https://magiccars-support-mvp.vercel.app'
     const upload_url = `${base_url}/upload/${session_id}`
