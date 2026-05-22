@@ -81,8 +81,12 @@ async function runOpenAIAnalysis(params: {
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-  // Fetch image from Vercel Blob URL and encode as base64
-  const response = await fetch(params.fileUrl)
+  // Fetch image from Vercel Blob URL (private blob requires token)
+  const fetchHeaders: Record<string, string> = {}
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    fetchHeaders['Authorization'] = `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`
+  }
+  const response = await fetch(params.fileUrl, { headers: fetchHeaders })
   if (!response.ok) {
     throw new Error(`Failed to fetch image from blob: ${response.status}`)
   }

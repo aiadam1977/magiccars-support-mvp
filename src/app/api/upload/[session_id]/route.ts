@@ -87,7 +87,7 @@ export async function POST(
     let blobUrl: string
     try {
       const blob = await put(`sessions/${session_id}/${fileName}`, Buffer.from(arrayBuffer), {
-        access: 'public',
+        access: 'private',
         token: process.env.BLOB_READ_WRITE_TOKEN,
       })
       blobUrl = blob.url
