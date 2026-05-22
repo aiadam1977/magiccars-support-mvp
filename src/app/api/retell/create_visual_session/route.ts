@@ -92,8 +92,13 @@ export async function POST(req: NextRequest) {
       issue_description = '',
     } = body
 
-    // Always resolve the phone — falls back to Retell API if LLM didn't pass it
-    const caller_phone = await resolveCallerPhone(raw_phone, call_id)
+    // Phone resolution order:
+    //   1. Query param ?caller_phone= or ?from_number= (injected by Retell tool config — most reliable)
+    //   2. Body param caller_phone (if LLM passes it)
+    //   3. Retell GET /get-call/{call_id} fallback
+    const qp = req.nextUrl.searchParams
+    const qp_phone = qp.get('caller_phone') || qp.get('from_number') || ''
+    const caller_phone = await resolveCallerPhone(qp_phone || raw_phone, call_id)
 
     const session_id = uuidv4()
     const base_url = process.env.APP_BASE_URL || 'https://magiccars-support-mvp.vercel.app'
