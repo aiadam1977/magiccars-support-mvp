@@ -5,7 +5,22 @@
  * Replaces the local JSON file store that fails on Vercel's read-only filesystem.
  */
 
-import { kv } from '@vercel/kv'
+import { createClient } from '@vercel/kv'
+
+/**
+ * @vercel/kv defaults to cache:"default" which lets Next.js cache Upstash HTTP
+ * responses, causing stale reads after writes within the same request/invocation.
+ * Override with cache:"no-store" and readYourWrites:true so every read sees the
+ * latest write from this client. Disable auto-pipelining to prevent batched
+ * requests from reordering reads ahead of writes.
+ */
+const kv = createClient({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+  cache: 'no-store',
+  readYourWrites: true,
+  enableAutoPipelining: false,
+})
 
 export interface VisualSession {
   session_id: string
