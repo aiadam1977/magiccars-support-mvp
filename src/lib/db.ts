@@ -68,11 +68,23 @@ export interface ServiceCase {
   updated_at: string
 }
 
+// ─── ID list helpers ─────────────────────────────────────────────────────────
+// Store ordered ID lists as plain JSON arrays. Newest entries are prepended so
+// reads are always newest-first. kv.get / kv.set are the most reliable ops in
+// @vercel/kv v3 and avoid sorted-set API surface issues.
+
+async function prependId(listKey: string, id: string): Promise<void> {
+  const existing = (await kv.get<string[]>(listKey)) ?? []
+  // Deduplicate just in case, then prepend
+  const updated = [id, ...existing.filter(x => x !== id)]
+  await kv.set(listKey, updated)
+}
+
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
 export async function createSession(session: VisualSession): Promise<VisualSession> {
   await kv.set(`mc:session:${session.session_id}`, session)
-  await kv.zadd('mc:sessions', { score: Date.now(), member: session.session_id })
+  await prependId('mc:session-ids', session.session_id)
   return session
 }
 
@@ -96,9 +108,8 @@ export async function updateSession(
 }
 
 export async function getAllSessions(): Promise<VisualSession[]> {
-  // zrange with rev:true returns newest (highest score) first
-  const ids = await kv.zrange<string[]>('mc:sessions', 0, -1, { rev: true })
-  if (!ids || ids.length === 0) return []
+  const ids = (await kv.get<string[]>('mc:session-ids')) ?? []
+  if (ids.length === 0) return []
   const sessions = await Promise.all(
     ids.map(id => kv.get<VisualSession>(`mc:session:${id}`))
   )
@@ -109,7 +120,7 @@ export async function getAllSessions(): Promise<VisualSession[]> {
 
 export async function createCase(serviceCase: ServiceCase): Promise<ServiceCase> {
   await kv.set(`mc:case:${serviceCase.case_id}`, serviceCase)
-  await kv.zadd('mc:cases', { score: Date.now(), member: serviceCase.case_id })
+  await prependId('mc:case-ids', serviceCase.case_id)
   return serviceCase
 }
 
@@ -118,9 +129,8 @@ export async function getCase(case_id: string): Promise<ServiceCase | null> {
 }
 
 export async function getAllCases(): Promise<ServiceCase[]> {
-  // zrange with rev:true returns newest (highest score) first
-  const ids = await kv.zrange<string[]>('mc:cases', 0, -1, { rev: true })
-  if (!ids || ids.length === 0) return []
+  const ids = (await kv.get<string[]>('mc:case-ids')) ?? []
+  if (ids.length === 0) return []
   const cases = await Promise.all(
     ids.map(id => kv.get<ServiceCase>(`mc:case:${id}`))
   )
