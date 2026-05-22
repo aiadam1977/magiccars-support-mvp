@@ -92,9 +92,11 @@ export async function POST(
       blobUrl = blob.url
       console.log(`[upload] Blob stored: ${blobUrl}`)
     } catch (err) {
-      const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
-      console.error(`[upload] Vercel Blob put() failed: ${msg}`)
-      throw new Error(`Blob upload failed: ${msg}`)
+      const details = err instanceof Error
+        ? { name: err.name, message: err.message, code: (err as Record<string, unknown>).code, status: (err as Record<string, unknown>).status }
+        : { raw: String(err) }
+      console.error(`[upload] Vercel Blob put() failed: ${JSON.stringify(details)}`)
+      throw new Error(`Blob upload failed: ${JSON.stringify(details)}`)
     }
 
     // Update session to uploaded status
