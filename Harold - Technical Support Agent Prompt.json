@@ -87,7 +87,7 @@
       {
         "name": "get_visual_analysis",
         "type": "custom",
-        "description": "Call this after create_visual_session to check whether the caller has uploaded their photo or video and whether the AI analysis is ready. Poll this tool every 10-15 seconds until the status is 'complete' or 'error'. Statuses: waiting_for_upload (caller has not uploaded yet), analysis_pending (upload received, AI is processing), complete (analysis ready — read back the findings), error (something went wrong — document the issue manually).",
+        "description": "Call this after create_visual_session to check whether the caller has uploaded their photo or video and whether the AI analysis is ready. Poll this tool every 10-15 seconds until the status is 'complete' or 'error'. Statuses: waiting_for_upload (caller has not uploaded yet), analysis_pending (upload received, AI is processing), complete (analysis ready — read back the findings), error (something went wrong — document the issue manually). Always pass call_id. Also pass session_id if you have it from the create_visual_session response.",
         "speak_during_execution": true,
         "speak_after_execution": false,
         "url": "https://magiccars-support-mvp.vercel.app/api/retell/get_visual_analysis",
@@ -95,13 +95,17 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "call_id": {
+              "type": "string",
+              "description": "The current Retell call ID — always pass this"
+            },
             "session_id": {
               "type": "string",
-              "description": "The session_id returned by create_visual_session"
+              "description": "The session_id returned by create_visual_session — pass this if available"
             }
           },
           "required": [
-            "session_id"
+            "call_id"
           ]
         }
       },

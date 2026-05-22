@@ -6,21 +6,24 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/db'
+import { getSession, getSessionByCallId } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { session_id } = body
+    const { session_id, call_id } = body
 
-    if (!session_id) {
+    if (!session_id && !call_id) {
       return NextResponse.json(
-        { success: false, error: 'session_id is required.' },
+        { success: false, error: 'session_id or call_id is required.' },
         { status: 400 }
       )
     }
 
-    const session = await getSession(session_id)
+    // Prefer session_id; fall back to call_id index if the LLM dropped session_id
+    const session = session_id
+      ? await getSession(session_id)
+      : await getSessionByCallId(call_id)
 
     if (!session) {
       return NextResponse.json(

@@ -143,7 +143,17 @@ async function removeId(listKey: string, id: string): Promise<void> {
 export async function createSession(session: VisualSession): Promise<VisualSession> {
   await kv.set(`mc:session:${session.session_id}`, session)
   await prependId('mc:session-ids', session.session_id)
+  // Index call_id → session_id so get_visual_analysis can fall back to call_id lookup
+  if (session.call_id) {
+    await kv.set(`mc:call-session:${session.call_id}`, session.session_id)
+  }
   return session
+}
+
+export async function getSessionByCallId(call_id: string): Promise<VisualSession | null> {
+  const session_id = await kv.get<string>(`mc:call-session:${call_id}`)
+  if (!session_id) return null
+  return await kv.get<VisualSession>(`mc:session:${session_id}`)
 }
 
 export async function getSession(session_id: string): Promise<VisualSession | null> {
