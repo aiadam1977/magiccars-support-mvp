@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MagicCars Support MVP — Project Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=Barlow:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #e8162d;
+    --red-dim: #a0101f;
+    --amber: #f59e0b;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --bg: #07090e;
+    --surface: #0d1117;
+    --surface-2: #161b24;
+    --surface-3: #1e2530;
+    --border: rgba(255,255,255,0.07);
+    --text: #e8edf4;
+    --muted: #5a6478;
+    --muted-2: #8892a4;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Barlow', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    overflow: hidden;
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .header-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 380px;
+  }
+
+  .header-left {
+    padding: 64px 56px 64px 64px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+  }
+
+  .header-right {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 64px 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header-right::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 280px; height: 280px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,22,45,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(232,22,45,0.12);
+    border: 1px solid rgba(232,22,45,0.3);
+    color: var(--red);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 4px;
+    width: fit-content;
+    margin-bottom: 24px;
+  }
+
+  .badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  h1 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 72px;
+    font-weight: 900;
+    line-height: 0.9;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+
+  h1 span {
+    color: var(--red);
+    display: block;
+  }
+
+  .tagline {
+    font-size: 17px;
+    font-weight: 300;
+    color: var(--muted-2);
+    max-width: 400px;
+    line-height: 1.7;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .stat-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+
+  .stat-number {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ── SECTIONS ── */
+  .section {
+    padding: 80px 64px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 12px;
+  }
+
+  .section-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+
+  /* ── CALL FLOW ── */
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0;
+    margin-top: 48px;
+    position: relative;
+  }
+
+  .flow-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+  }
+
+  .flow-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 32px;
+    left: calc(50% + 28px);
+    width: calc(100% - 56px);
+    height: 2px;
+    background: linear-gradient(90deg, var(--surface-3), var(--surface-3));
+    z-index: 0;
+  }
+
+  .flow-step.active:not(:last-child)::after {
+    background: linear-gradient(90deg, var(--red-dim), var(--surface-3));
+  }
+
+  .flow-icon {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+
+  .flow-step.active .flow-icon {
+    background: rgba(232,22,45,0.1);
+    border-color: rgba(232,22,45,0.5);
+    box-shadow: 0 0 24px rgba(232,22,45,0.15);
+  }
+
+  .flow-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .flow-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    padding: 0 4px;
+  }
+
+  /* ── FEATURES GRID ── */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+
+  .feature-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .feature-card:hover {
+    border-color: rgba(232,22,45,0.3);
+  }
+
+  .feature-card.built {
+    border-top: 3px solid var(--green);
+  }
+
+  .feature-card.planned {
+    border-top: 3px solid var(--amber);
+  }
+
+  .feature-card.future {
+    border-top: 3px solid var(--purple);
+  }
+
+  .feature-status {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 3px;
+    margin-bottom: 16px;
+  }
+
+  .status-built { background: rgba(34,197,94,0.12); color: var(--green); }
+  .status-planned { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .status-future { background: rgba(168,85,247,0.12); color: var(--purple); }
+
+  .feature-icon {
+    font-size: 28px;
+    margin-bottom: 14px;
+    display: block;
+  }
+
+  .feature-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 10px;
+  }
+
+  .feature-desc {
+    font-size: 14px;
+    color: var(--muted-2);
+    line-height: 1.6;
+  }
+
+  .feature-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 16px;
+  }
+
+  .tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: 3px;
+  }
+
+  /* ── CALL DETAIL ── */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: 8px;
+  }
+
+  .detail-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted-2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .panel-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+
+  .panel-body {
+    padding: 24px;
+  }
+
+  .data-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .data-row:last-child { border-bottom: none; }
+
+  .data-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+    letter-spacing: 0.05em;
+  }
+
+  .data-value {
+    font-size: 13px;
+    color: var(--text);
+    text-align: right;
+  }
+
+  .data-value.green { color: var(--green); }
+  .data-value.red { color: var(--red); }
+  .data-value.amber { color: var(--amber); }
+  .data-value.mono {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+  }
+
+  /* ── TECH STACK ── */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-top: 8px;
+  }
+
+  .stack-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .stack-icon { font-size: 28px; margin-bottom: 10px; display: block; }
+  .stack-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .stack-desc { font-size: 12px; color: var(--muted); }
+
+  /* ── ROUTING ROUTES ── */
+  .routes-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .route-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 22px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .route-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .route-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 5px;
+  }
+
+  .route-desc { font-size: 13px; color: var(--muted-2); line-height: 1.5; }
+
+  /* ── DASHBOARD SECTION ── */
+  .dashboard-preview {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .db-topbar {
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .db-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .db-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .db-tab {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    color: var(--muted);
+    border: 1px solid transparent;
+  }
+
+  .db-tab.active {
+    background: rgba(232,22,45,0.1);
+    border-color: rgba(232,22,45,0.3);
+    color: var(--red);
+  }
+
+  .db-body {
+    padding: 24px;
+  }
+
+  .case-row {
+    display: grid;
+    grid-template-columns: 120px 1fr 140px 100px 80px 100px;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .case-row:last-child { border-bottom: none; }
+
+  .case-row:hover { background: var(--surface-2); }
+
+  .case-row.header {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    background: none;
+  }
+
+  .case-row.header:hover { background: none; }
+
+  .pill {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 100px;
+  }
+
+  .pill-open { background: rgba(232,22,45,0.12); color: var(--red); }
+  .pill-assigned { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .pill-resolved { background: rgba(34,197,94,0.12); color: var(--green); }
+
+  .new-col {
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .new-badge {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+
+  /* ── PLANNED ADDITIONS ── */
+  .planned-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .planned-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .planned-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--amber), transparent);
+  }
+
+  .planned-number {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 52px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--surface-3);
+    position: absolute;
+    top: 20px; right: 20px;
+  }
+
+  .planned-icon { font-size: 28px; margin-bottom: 14px; display: block; }
+
+  .planned-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 10px;
+    color: var(--amber);
+  }
+
+  .planned-desc {
+    font-size: 14px;
+    color: var(--muted-2);
+    line-height: 1.65;
+    margin-bottom: 16px;
+  }
+
+  .checklist {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .checklist li {
+    font-size: 13px;
+    color: var(--muted-2);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    line-height: 1.5;
+  }
+
+  .checklist li::before {
+    content: '—';
+    color: var(--amber);
+    flex-shrink: 0;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    padding: 40px 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer-brand {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .footer-brand span { color: var(--red); }
+
+  .footer-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 40px 0;
+  }
+
+  .inline-code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    color: var(--amber);
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="header-grid">
+    <div class="header-left">
+      <div class="badge">
+        <div class="badge-dot"></div>
+        Live in Production
+      </div>
+      <h1>
+        Magic Cars
+        <span>Support MVP</span>
+      </h1>
+      <p class="tagline">AI-powered technical support for ride-on vehicles. Callers describe their issue, send a photo or video, get an instant AI diagnosis, and are routed to the right resolution — all on a single phone call.</p>
+    </div>
+    <div class="header-right">
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--red);">3</div>
+          <div class="stat-label">Retell AI Tools</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--amber);">6</div>
+          <div class="stat-label">Resolution Routes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--green);">GPT-4o</div>
+          <div class="stat-label">Vision Model</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--blue);">KV+Blob</div>
+          <div class="stat-label">Vercel Storage</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── CALL FLOW ── -->
+<section class="section">
+  <div class="section-label">Core Experience</div>
+  <div class="section-title">How a support call works</div>
+
+  <div class="flow">
+    <div class="flow-step active">
+      <div class="flow-icon">📞</div>
+      <div class="flow-title">Caller Dials In</div>
+      <div class="flow-desc">Harold answers. Collects name, phone, email, order number.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-icon">🔍</div>
+      <div class="flow-title">Issue Triage</div>
+      <div class="flow-desc">Harold asks targeted questions to understand the technical problem.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-icon">🔗</div>
+      <div class="flow-title">Secure Link Sent</div>
+      <div class="flow-desc">Caller gets an SMS upload link. They open it on their phone.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-icon">📸</div>
+      <div class="flow-title">Photo / Video</div>
+      <div class="flow-desc">Caller uploads a photo or short video of the vehicle issue.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-icon">🤖</div>
+      <div class="flow-title">AI Analysis</div>
+      <div class="flow-desc">GPT-4o Vision analyzes the image and returns a full diagnosis.</div>
+    </div>
+    <div class="flow-step active">
+      <div class="flow-icon">📋</div>
+      <div class="flow-title">Harold Reads Back</div>
+      <div class="flow-desc">Harold reads the findings and recommended steps to the caller.</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-icon">📁</div>
+      <div class="flow-title">Case Created</div>
+      <div class="flow-desc">If escalation is needed, a case is logged with all evidence attached.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── RESOLUTION ROUTES ── -->
+<section class="section">
+  <div class="section-label">AI Decision Engine</div>
+  <div class="section-title">6 Resolution Routes</div>
+  <p style="color: var(--muted-2); margin-bottom: 32px; max-width: 640px; font-size: 15px;">After the visual analysis, the AI returns a <span class="inline-code">recommended_route</span> that tells Harold exactly how to handle the call. No human judgment required on routing.</p>
+
+  <div class="routes-grid">
+    <div class="route-card">
+      <div class="route-icon">🔧</div>
+      <div>
+        <div class="route-name">Self Fix</div>
+        <div class="route-desc">Issue is owner-serviceable. Harold walks the caller through safe, step-by-step repair instructions live on the call.</div>
+      </div>
+    </div>
+    <div class="route-card">
+      <div class="route-icon">📦</div>
+      <div>
+        <div class="route-name">Replacement Part</div>
+        <div class="route-desc">A specific part needs replacing. Case created, parts team is notified with the AI's part identification.</div>
+      </div>
+    </div>
+    <div class="route-card">
+      <div class="route-icon">🛡️</div>
+      <div>
+        <div class="route-name">Warranty Replacement</div>
+        <div class="route-desc">Defect is within warranty coverage. Warranty team is notified automatically with the full analysis and media.</div>
+      </div>
+    </div>
+    <div class="route-card">
+      <div class="route-icon">🕒</div>
+      <div>
+        <div class="route-name">Out of Warranty</div>
+        <div class="route-desc">Warranty has expired. Service team is notified to provide the best available repair or upgrade options.</div>
+      </div>
+    </div>
+    <div class="route-card">
+      <div class="route-icon">🚨</div>
+      <div>
+        <div class="route-name">Safety Stop</div>
+        <div class="route-desc">Potential safety issue detected. Harold instructs caller not to use the vehicle. Immediate escalation to a specialist.</div>
+      </div>
+    </div>
+    <div class="route-card">
+      <div class="route-icon">👤</div>
+      <div>
+        <div class="route-name">Human Support</div>
+        <div class="route-desc">Issue is too complex to resolve on the call. Full case created with all context for the specialist team.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── DASHBOARD PREVIEW ── -->
+<section class="section">
+  <div class="section-label">Internal Dashboard</div>
+  <div class="section-title">What the team sees</div>
+  <p style="color: var(--muted-2); margin-bottom: 32px; max-width: 640px; font-size: 15px;">Every case and session is stored in real-time. The dashboard gives the support team a live view of all open cases, with photo evidence and AI analysis attached.</p>
+
+  <div class="dashboard-preview">
+    <div class="db-topbar">
+      <div class="db-topbar-left">
+        <div class="db-title">MagicCars Support</div>
+        <div class="db-tab active">Cases</div>
+        <div class="db-tab">Sessions</div>
+        <div class="db-tab" style="opacity: 0.4;">Recordings ↗ Planned</div>
+        <div class="db-tab" style="opacity: 0.4;">Transcripts ↗ Planned</div>
+      </div>
+      <div style="font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);">Live · Auto-refresh</div>
+    </div>
+    <div class="db-body">
+      <div class="case-row header">
+        <div>Case ID</div>
+        <div>Caller &amp; Issue</div>
+        <div>Vehicle</div>
+        <div>Route</div>
+        <div>Status</div>
+        <div>Created</div>
+      </div>
+      <div class="case-row">
+        <div class="new-col"><div class="new-badge" style="background: var(--red);"></div> MC-MPG9AA3</div>
+        <div>
+          <div style="font-weight: 500; margin-bottom: 2px;">Sarah Chen</div>
+          <div style="font-size: 12px; color: var(--muted);">Motor not responding after rain exposure</div>
+        </div>
+        <div style="font-size: 12px; color: var(--muted-2);">12V Ride-On Jeep</div>
+        <div><span class="pill" style="background: rgba(232,22,45,0.12); color: var(--red); font-size: 10px;">Safety Stop</span></div>
+        <div><span class="pill pill-open">Open</span></div>
+        <div style="font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);">2 min ago</div>
+      </div>
+      <div class="case-row">
+        <div class="new-col"><div class="new-badge" style="background: var(--amber);"></div> MC-KL3R7PQ</div>
+        <div>
+          <div style="font-weight: 500; margin-bottom: 2px;">James Morton</div>
+          <div style="font-size: 12px; color: var(--muted);">Battery not charging, charger light off</div>
+        </div>
+        <div style="font-size: 12px; color: var(--muted-2);">24V ATV</div>
+        <div><span class="pill" style="background: rgba(245,158,11,0.12); color: var(--amber); font-size: 10px;">Repl. Part</span></div>
+        <div><span class="pill pill-assigned">Assigned</span></div>
+        <div style="font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);">18 min ago</div>
+      </div>
+      <div class="case-row">
+        <div class="new-col"><div class="new-badge" style="background: var(--green);"></div> MC-TQ8XN2M</div>
+        <div>
+          <div style="font-weight: 500; margin-bottom: 2px;">Alicia Reyes</div>
+          <div style="font-size: 12px; color: var(--muted);">Remote control not syncing to vehicle</div>
+        </div>
+        <div style="font-size: 12px; color: var(--muted-2);">12V Ride-On Jeep</div>
+        <div><span class="pill" style="background: rgba(34,197,94,0.12); color: var(--green); font-size: 10px;">Self Fix</span></div>
+        <div><span class="pill pill-resolved">Resolved</span></div>
+        <div style="font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted);">1 hr ago</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px;">
+    <div class="detail-grid">
+      <div class="detail-panel">
+        <div class="panel-header">
+          <div class="panel-dot" style="background: var(--red);"></div>
+          Case Detail — Current Fields
+        </div>
+        <div class="panel-body">
+          <div class="data-row"><span class="data-label">case_id</span><span class="data-value mono">MC-MPG9AA3</span></div>
+          <div class="data-row"><span class="data-label">caller_name</span><span class="data-value">Sarah Chen</span></div>
+          <div class="data-row"><span class="data-label">caller_phone</span><span class="data-value mono">(310) 555-0182</span></div>
+          <div class="data-row"><span class="data-label">vehicle</span><span class="data-value">12V Ride-On Jeep 2024</span></div>
+          <div class="data-row"><span class="data-label">recommended_route</span><span class="data-value red">safety_stop</span></div>
+          <div class="data-row"><span class="data-label">escalation_required</span><span class="data-value green">true</span></div>
+          <div class="data-row"><span class="data-label">media_attached</span><span class="data-value green">video/mp4</span></div>
+          <div class="data-row"><span class="data-label">confidence_level</span><span class="data-value amber">high</span></div>
+          <div class="data-row"><span class="data-label">status</span><span class="data-value"><span class="pill pill-open">open</span></span></div>
+          <div class="data-row"><span class="data-label">created_at</span><span class="data-value mono">2026-05-21 09:12</span></div>
+        </div>
+      </div>
+      <div class="detail-panel">
+        <div class="panel-header">
+          <div class="panel-dot" style="background: var(--amber);"></div>
+          Case Detail — Planned Fields
+        </div>
+        <div class="panel-body">
+          <div class="data-row"><span class="data-label">call_recording_url</span><span class="data-value amber" style="font-size: 12px;">▶ Play Recording</span></div>
+          <div class="data-row"><span class="data-label">call_duration_sec</span><span class="data-value mono amber">247</span></div>
+          <div class="data-row"><span class="data-label">transcript</span><span class="data-value amber" style="font-size: 12px;">View Full Transcript →</span></div>
+          <div class="data-row"><span class="data-label">sentiment</span><span class="data-value amber">frustrated → resolved</span></div>
+          <div class="data-row"><span class="data-label">retell_call_id</span><span class="data-value mono amber">call_abc123...</span></div>
+          <div class="data-row"><span class="data-label">agent_version</span><span class="data-value mono amber">v138</span></div>
+          <div class="data-row"><span class="data-label">language_detected</span><span class="data-value amber">en-US</span></div>
+          <div class="data-row"><span class="data-label">issue_keywords</span><span class="data-value amber" style="font-size: 12px;">motor, rain, unresponsive</span></div>
+          <div class="data-row"><span class="data-label">assigned_to</span><span class="data-value amber">—</span></div>
+          <div class="data-row"><span class="data-label">internal_notes</span><span class="data-value amber" style="font-size: 12px;">+ Add note</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PLANNED ADDITIONS ── -->
+<section class="section">
+  <div class="section-label">Roadmap</div>
+  <div class="section-title">Planned Additions</div>
+
+  <div class="planned-grid">
+    <div class="planned-card">
+      <div class="planned-number">01</div>
+      <div class="planned-icon">🎙️</div>
+      <div class="planned-title">Call Recordings</div>
+      <div class="planned-desc">Embed Retell call recordings directly in the case detail view. Agents can play back the full conversation alongside the transcript and visual evidence — no need to leave the dashboard.</div>
+      <ul class="checklist">
+        <li>Receive <span class="inline-code">recording_url</span> from Retell webhook on call end</li>
+        <li>Store URL on the case record in KV</li>
+        <li>Render inline audio player in the case detail page</li>
+        <li>Show call duration and timestamp</li>
+      </ul>
+    </div>
+    <div class="planned-card">
+      <div class="planned-number">02</div>
+      <div class="planned-icon">📝</div>
+      <div class="planned-title">Full Transcripts</div>
+      <div class="planned-desc">Store and display the complete call transcript on each case. Searchable by keyword, with speaker labels so agents can scan quickly for key moments without listening to the full recording.</div>
+      <ul class="checklist">
+        <li>Receive <span class="inline-code">transcript</span> array from Retell webhook</li>
+        <li>Store on case with speaker labels (agent / user)</li>
+        <li>Render with timestamp markers and scroll anchors</li>
+        <li>Add keyword search / highlight within transcript</li>
+      </ul>
+    </div>
+    <div class="planned-card">
+      <div class="planned-number">03</div>
+      <div class="planned-icon">📊</div>
+      <div class="planned-title">Call Metadata &amp; Variables</div>
+      <div class="planned-desc">Capture all Retell call variables on every case — sentiment, detected language, call duration, agent version, dynamic variables set during the call — for analytics and quality review.</div>
+      <ul class="checklist">
+        <li>Capture all <span class="inline-code">call_analysis</span> fields from Retell webhook</li>
+        <li>Store sentiment, language, DTMF, latency stats</li>
+        <li>Display structured metadata panel on case detail</li>
+        <li>Surface trends on a future analytics dashboard</li>
+      </ul>
+    </div>
+    <div class="planned-card">
+      <div class="planned-number">04</div>
+      <div class="planned-icon">🔔</div>
+      <div class="planned-title">Case Assignment &amp; Notes</div>
+      <div class="planned-desc">Let support agents assign open cases to themselves, add internal notes, and update case status — turning the dashboard from a read-only log into a working ticket system.</div>
+      <ul class="checklist">
+        <li>Add <span class="inline-code">assigned_to</span>, <span class="inline-code">notes[]</span> to the ServiceCase schema</li>
+        <li>Build inline assignment UI with agent list</li>
+        <li>Internal notes panel with timestamp and author</li>
+        <li>Status transitions: open → assigned → resolved</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ── TECH STACK ── -->
+<section class="section" style="border-bottom: none;">
+  <div class="section-label">Architecture</div>
+  <div class="section-title">Technical Stack</div>
+
+  <div class="stack-grid">
+    <div class="stack-card">
+      <div class="stack-icon">🤖</div>
+      <div class="stack-name">Retell AI</div>
+      <div class="stack-desc">Voice agent platform. Harold runs as a custom LLM agent with three server-side tools.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">⚡</div>
+      <div class="stack-name">Next.js 14</div>
+      <div class="stack-desc">App Router. All Retell tools are serverless API routes. Dashboard runs server-side.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">🗄️</div>
+      <div class="stack-name">Vercel KV</div>
+      <div class="stack-desc">Redis-backed store for sessions and cases. Custom client prevents Next.js fetch caching.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">🗂️</div>
+      <div class="stack-name">Vercel Blob</div>
+      <div class="stack-desc">Private blob store for caller photo and video uploads. Served via server-side proxy.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">👁️</div>
+      <div class="stack-name">GPT-4o Vision</div>
+      <div class="stack-desc">Analyzes uploaded media and returns structured diagnosis with confidence and routing.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">📱</div>
+      <div class="stack-name">SMS Upload</div>
+      <div class="stack-desc">Secure per-session upload URL texted to caller. Accepts photo and video up to 25MB.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">🌐</div>
+      <div class="stack-name">Vercel Edge</div>
+      <div class="stack-desc">Global edge deployment. Sub-100ms cold start on all API routes for real-time call use.</div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-icon">🔒</div>
+      <div class="stack-name">Private by Default</div>
+      <div class="stack-desc">All media in private blob storage. Accessed only via authenticated server-side proxy route.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-brand">Magic<span>Cars</span> · Support MVP</div>
+  <div class="footer-meta">Built May 2026 · Next.js 14 · Retell AI · Vercel · GPT-4o</div>
+</footer>
+
+</body>
+</html>

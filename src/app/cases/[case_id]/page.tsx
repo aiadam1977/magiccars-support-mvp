@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import Nav from '@/components/Nav'
@@ -22,6 +22,7 @@ interface ServiceCase {
   session_id: string
   caller_name: string
   caller_phone: string
+  caller_email?: string
   vehicle: string
   issue_description: string
   analysis_summary: string
@@ -34,6 +35,14 @@ interface ServiceCase {
   file_type?: string
   created_at: string
   updated_at: string
+}
+
+interface EmailTemplate {
+  template_id: string
+  name: string
+  category: string
+  subject: string
+  body: string
 }
 
 const ROUTE_LABEL: Record<string, string> = {
@@ -82,11 +91,246 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+// ─── Send Email Modal ─────────────────────────────────────────────────────────
+
+interface SendEmailModalProps {
+  serviceCase: ServiceCase
+  onClose: () => void
+}
+
+const SAMPLE_VARS: Record<string, string> = {}
+
+function previewBody(body: string, vars: Record<string, string>): string {
+  return body.replace(/\{\{(\w+)\}\}/g, (match, key: string) => {
+    return vars[key] !== undefined ? vars[key] : match
+  })
+}
+
+function SendEmailModal({ serviceCase, onClose }: SendEmailModalProps) {
+  const [templates, setTemplates] = useState<EmailTemplate[]>([])
+  const [selectedId, setSelectedId] = useState('')
+  const [overrideEmail, setOverrideEmail] = useState(serviceCase.caller_email || '')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [sentMessage, setSentMessage] = useState('')
+  const [error, setError] = useState('')
+  const [loadingTemplates, setLoadingTemplates] = useState(true)
+
+  const caseVars: Record<string, string> = {
+    caller_name: serviceCase.caller_name,
+    caller_phone: serviceCase.caller_phone,
+    caller_email: overrideEmail,
+    case_id: serviceCase.case_id,
+    vehicle: serviceCase.vehicle,
+    issue_description: serviceCase.issue_description,
+    recommended_route: serviceCase.recommended_route,
+    analysis_summary:
+      serviceCase.analysis?.service_case_summary || serviceCase.analysis_summary || '',
+  }
+
+  useEffect(() => {
+    fetch('/api/templates')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setTemplates(d.templates)
+          if (d.templates.length > 0) setSelectedId(d.templates[0].template_id)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingTemplates(false))
+  }, [])
+
+  const selected = templates.find(t => t.template_id === selectedId)
+
+  async function handleSend() {
+    if (!overrideEmail.trim()) {
+      setError('An email address is required to send.')
+      return
+    }
+    if (!selectedId) {
+      setError('Please select a template.')
+      return
+    }
+    setSending(true)
+    setError('')
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_id: serviceCase.case_id,
+          template_id: selectedId,
+          override_email: overrideEmail.trim(),
+        }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        setSent(true)
+        setSentMessage(d.message)
+      } else {
+        setError(d.error || 'Failed to send email.')
+      }
+    } catch {
+      setError('Network error — please try again.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Send Email</h2>
+            <p className="text-sm text-slate-400">
+              Case {serviceCase.case_id} · {serviceCase.caller_name}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 text-xl leading-none p-1"
+          >
+            ×
+          </button>
+        </div>
+
+        {sent ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="text-5xl mb-4">✅</div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Email sent!</h3>
+            <p className="text-sm text-slate-500 mb-1">Sent to: {overrideEmail}</p>
+            <p className="text-xs text-slate-400 mb-6">{sentMessage}</p>
+            <button onClick={onClose} className="btn-secondary text-sm">
+              Close
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {/* To: field */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Send To
+                </label>
+                <input
+                  type="email"
+                  value={overrideEmail}
+                  onChange={e => setOverrideEmail(e.target.value)}
+                  placeholder="caller@email.com"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]"
+                />
+                {!serviceCase.caller_email && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    No email captured during call. Enter the caller's email address above.
+                  </p>
+                )}
+              </div>
+
+              {/* Template selector */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Template
+                  </label>
+                  <Link
+                    href="/templates"
+                    target="_blank"
+                    className="text-xs text-[#E31837] hover:underline"
+                  >
+                    Manage templates →
+                  </Link>
+                </div>
+                {loadingTemplates ? (
+                  <div className="text-sm text-slate-400">Loading templates...</div>
+                ) : templates.length === 0 ? (
+                  <div className="text-sm text-slate-400">
+                    No templates yet.{' '}
+                    <Link href="/templates" className="text-[#E31837] hover:underline">
+                      Create one →
+                    </Link>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedId}
+                    onChange={e => setSelectedId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]"
+                  >
+                    {templates.map(t => (
+                      <option key={t.template_id} value={t.template_id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Preview */}
+              {selected && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Preview (variables substituted)
+                  </p>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5">
+                      <p className="text-xs text-slate-500">
+                        <span className="font-medium">Subject: </span>
+                        {previewBody(selected.subject, caseVars)}
+                      </p>
+                    </div>
+                    <div className="px-4 py-3 max-h-52 overflow-y-auto">
+                      <pre className="text-sm text-slate-700 font-sans whitespace-pre-wrap leading-relaxed">
+                        {previewBody(selected.body, caseVars)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center gap-3">
+              <button
+                onClick={handleSend}
+                disabled={sending || !selectedId || !overrideEmail.trim()}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                {sending ? 'Sending...' : 'Send Email'}
+              </button>
+              <button onClick={onClose} className="btn-secondary text-sm">
+                Cancel
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function CaseDetailPage() {
   const { case_id } = useParams() as { case_id: string }
   const [serviceCase, setServiceCase] = useState<ServiceCase | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showEmailModal, setShowEmailModal] = useState(false)
 
   useEffect(() => {
     fetch(`/api/cases/${case_id}`)
@@ -125,12 +369,19 @@ export default function CaseDetailPage() {
   const a = serviceCase.analysis
   const isSafety = serviceCase.recommended_route === 'safety_stop'
   const isImage = serviceCase.file_type?.startsWith('image/')
-  // Serve media through proxy to handle private blob authentication
   const mediaUrl = serviceCase.file_path ? `/api/media/${serviceCase.session_id}` : null
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Nav />
+
+      {showEmailModal && (
+        <SendEmailModal
+          serviceCase={serviceCase}
+          onClose={() => setShowEmailModal(false)}
+        />
+      )}
+
       <div className="max-w-4xl mx-auto px-4 py-8">
 
         {/* Safety banner */}
@@ -162,7 +413,7 @@ export default function CaseDetailPage() {
               </h1>
               <p className="text-slate-400 text-xs mt-1">{formatDate(serviceCase.created_at)}</p>
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
               {a && (
                 <>
                   <span
@@ -186,6 +437,12 @@ export default function CaseDetailPage() {
                   )}
                 </>
               )}
+              <button
+                onClick={() => setShowEmailModal(true)}
+                className="btn-primary text-xs flex items-center gap-1.5"
+              >
+                ✉ Send Email
+              </button>
             </div>
           </div>
         </div>
@@ -198,6 +455,12 @@ export default function CaseDetailPage() {
               <Section title="Parent / Caller">
                 <p className="font-semibold text-slate-800">{serviceCase.caller_name}</p>
                 <p className="text-slate-500 text-sm">{serviceCase.caller_phone}</p>
+                {serviceCase.caller_email && (
+                  <p className="text-slate-500 text-sm">{serviceCase.caller_email}</p>
+                )}
+                {!serviceCase.caller_email && (
+                  <p className="text-xs text-amber-500 mt-1">No email on file</p>
+                )}
               </Section>
             </div>
 
@@ -323,7 +586,13 @@ export default function CaseDetailPage() {
           <Link href="/cases" className="btn-secondary text-sm">
             Back to All Cases
           </Link>
-          <Link href="/demo" className="btn-primary text-sm">
+          <button
+            onClick={() => setShowEmailModal(true)}
+            className="btn-primary text-sm"
+          >
+            ✉ Send Email to Caller
+          </button>
+          <Link href="/demo" className="btn-secondary text-sm">
             New Demo Session
           </Link>
         </div>

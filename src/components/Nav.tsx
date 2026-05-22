@@ -8,6 +8,7 @@ export default function Nav() {
   const links = [
     { href: '/demo', label: 'Demo Simulator' },
     { href: '/cases', label: 'Support Cases' },
+    { href: '/templates', label: 'Email Templates' },
   ]
 
   return (

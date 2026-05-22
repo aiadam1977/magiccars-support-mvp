@@ -63,22 +63,57 @@ export interface AnalysisResult {
   service_case_summary: string
 }
 
+export interface CallMetadata {
+  call_id: string
+  recording_url?: string
+  public_log_url?: string
+  transcript?: string
+  duration_ms?: number
+  start_timestamp?: number
+  end_timestamp?: number
+  user_sentiment?: string
+  call_summary?: string
+  call_completion_rating?: string
+  dynamic_variables?: Record<string, unknown>
+  stored_at: string
+}
+
 export interface ServiceCase {
   case_id: string
   call_id: string
   session_id: string
   caller_name: string
   caller_phone: string
+  caller_email?: string
   vehicle: string
   issue_description: string
   analysis_summary: string
   recommended_route: string
   escalation_reason: string
   analysis?: AnalysisResult
+  call_metadata?: CallMetadata
   file_path?: string
   file_name?: string
   file_type?: string
   status: 'open' | 'assigned' | 'resolved'
+  created_at: string
+  updated_at: string
+}
+
+export type TemplateCategory =
+  | 'general'
+  | 'warranty'
+  | 'parts'
+  | 'self_fix'
+  | 'safety'
+  | 'follow_up'
+
+export interface EmailTemplate {
+  template_id: string
+  name: string
+  category: TemplateCategory
+  subject: string
+  body: string
   created_at: string
   updated_at: string
 }
@@ -95,6 +130,12 @@ async function prependId(listKey: string, id: string): Promise<void> {
   const existing: string[] = Array.isArray(raw) ? raw : []
   const updated = [id, ...existing.filter((x: string) => x !== id)]
   await kv.set(listKey, updated)
+}
+
+async function removeId(listKey: string, id: string): Promise<void> {
+  const raw = await kv.get(listKey)
+  const existing: string[] = Array.isArray(raw) ? raw : []
+  await kv.set(listKey, existing.filter((x: string) => x !== id))
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -154,4 +195,49 @@ export async function getAllCases(): Promise<ServiceCase[]> {
     ids.map(id => kv.get<ServiceCase>(`mc:case:${id}`))
   )
   return cases.filter((c): c is ServiceCase => c !== null)
+}
+
+// ─── Email Templates ──────────────────────────────────────────────────────────
+
+export async function createTemplate(template: EmailTemplate): Promise<EmailTemplate> {
+  await kv.set(`mc:template:${template.template_id}`, template)
+  await prependId('mc:template-ids', template.template_id)
+  return template
+}
+
+export async function getTemplate(template_id: string): Promise<EmailTemplate | null> {
+  return await kv.get<EmailTemplate>(`mc:template:${template_id}`)
+}
+
+export async function updateTemplate(
+  template_id: string,
+  updates: Partial<Pick<EmailTemplate, 'name' | 'category' | 'subject' | 'body'>>
+): Promise<EmailTemplate | null> {
+  const existing = await kv.get<EmailTemplate>(`mc:template:${template_id}`)
+  if (!existing) return null
+  const updated: EmailTemplate = {
+    ...existing,
+    ...updates,
+    updated_at: new Date().toISOString(),
+  }
+  await kv.set(`mc:template:${template_id}`, updated)
+  return updated
+}
+
+export async function deleteTemplate(template_id: string): Promise<boolean> {
+  const existing = await kv.get(`mc:template:${template_id}`)
+  if (!existing) return false
+  await kv.del(`mc:template:${template_id}`)
+  await removeId('mc:template-ids', template_id)
+  return true
+}
+
+export async function getAllTemplates(): Promise<EmailTemplate[]> {
+  const raw = await kv.get('mc:template-ids')
+  const ids: string[] = Array.isArray(raw) ? raw : []
+  if (ids.length === 0) return []
+  const templates = await Promise.all(
+    ids.map(id => kv.get<EmailTemplate>(`mc:template:${id}`))
+  )
+  return templates.filter((t): t is EmailTemplate => t !== null)
 }
