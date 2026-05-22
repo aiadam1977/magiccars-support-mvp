@@ -74,12 +74,12 @@ export interface ServiceCase {
 // @vercel/kv v3 and avoid sorted-set API surface issues.
 
 async function prependId(listKey: string, id: string): Promise<void> {
+  // kv.get<string[]> can silently mis-deserialize via the generic; read untyped
+  // and use Array.isArray to guard, which reliably handles null and non-arrays.
   const raw = await kv.get(listKey)
-  console.log(`[prependId] ${listKey} raw type=${typeof raw} isArray=${Array.isArray(raw)} value=${JSON.stringify(raw)}`)
   const existing: string[] = Array.isArray(raw) ? raw : []
   const updated = [id, ...existing.filter((x: string) => x !== id)]
-  const result = await kv.set(listKey, updated)
-  console.log(`[prependId] ${listKey} wrote ${updated.length} IDs, result=${JSON.stringify(result)}`)
+  await kv.set(listKey, updated)
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -110,7 +110,8 @@ export async function updateSession(
 }
 
 export async function getAllSessions(): Promise<VisualSession[]> {
-  const ids = (await kv.get<string[]>('mc:session-ids')) ?? []
+  const raw = await kv.get('mc:session-ids')
+  const ids: string[] = Array.isArray(raw) ? raw : []
   if (ids.length === 0) return []
   const sessions = await Promise.all(
     ids.map(id => kv.get<VisualSession>(`mc:session:${id}`))
@@ -131,7 +132,8 @@ export async function getCase(case_id: string): Promise<ServiceCase | null> {
 }
 
 export async function getAllCases(): Promise<ServiceCase[]> {
-  const ids = (await kv.get<string[]>('mc:case-ids')) ?? []
+  const raw = await kv.get('mc:case-ids')
+  const ids: string[] = Array.isArray(raw) ? raw : []
   if (ids.length === 0) return []
   const cases = await Promise.all(
     ids.map(id => kv.get<ServiceCase>(`mc:case:${id}`))
