@@ -39,8 +39,6 @@ interface ServiceCase {
     likely_issue: string
     confidence_level: string
     escalation_required: boolean
-    visual_summary?: string
-    service_case_summary?: string
   }
 }
 
@@ -71,35 +69,16 @@ const SENTIMENT_COLOR: Record<string, string> = {
   Unknown: 'text-slate-400',
 }
 
-const SATISFACTION_COLOR: Record<string, string> = {
-  satisfied: 'bg-green-100 text-green-700',
-  neutral: 'bg-slate-100 text-slate-600',
-  frustrated: 'bg-red-100 text-red-600',
-  unknown: 'bg-slate-100 text-slate-400',
-}
-
 const STATUS_COLOR: Record<string, string> = {
   open: 'bg-yellow-100 text-yellow-700',
   assigned: 'bg-blue-100 text-blue-700',
   resolved: 'bg-green-100 text-green-700',
 }
 
-function Badge({ label, color }: { label: string; color: string }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
-      {label}
-    </span>
-  )
-}
-
-function YesNo({ value }: { value?: string }) {
-  if (!value) return <span className="text-slate-300">—</span>
-  const yes = value === 'yes'
-  return (
-    <span className={`font-medium ${yes ? 'text-green-600' : 'text-slate-400'}`}>
-      {yes ? 'Yes' : 'No'}
-    </span>
-  )
+const CONF_COLOR: Record<string, string> = {
+  low: 'bg-yellow-100 text-yellow-700',
+  medium: 'bg-orange-100 text-orange-700',
+  high: 'bg-red-100 text-red-700',
 }
 
 function formatDate(iso: string) {
@@ -121,28 +100,9 @@ function formatPhone(phone?: string) {
   return phone
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">{title}</div>
-      <div className="space-y-2">{children}</div>
-    </div>
-  )
-}
-
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className="text-xs text-slate-400 w-28 flex-shrink-0 pt-0.5">{label}</span>
-      <span className="text-xs text-slate-700">{value}</span>
-    </div>
-  )
-}
-
 export default function CasesPage() {
   const [cases, setCases] = useState<ServiceCase[]>([])
   const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/cases')
@@ -195,179 +155,116 @@ export default function CasesPage() {
         )}
 
         {!loading && cases.length > 0 && (
-          <div className="space-y-3">
-            {cases.map(c => {
-              const cad = c.custom_analysis_data
-              const isSafety = c.recommended_route === 'safety_stop'
-              const isOpen = expanded === c.case_id
+          <div className="overflow-x-auto rounded-xl border border-gray-100 shadow-sm bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-gray-100">
+                <tr>
+                  {[
+                    'Case ID',
+                    'Caller',
+                    'Phone',
+                    'Vehicle',
+                    'Issue Category',
+                    'Route',
+                    'Sentiment',
+                    'Satisfaction',
+                    'Follow-Up',
+                    'Status',
+                    'Created',
+                  ].map(h => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {cases.map(c => {
+                  const cad = c.custom_analysis_data
+                  const isSafety = c.recommended_route === 'safety_stop'
+                  const route = cad?.recommended_route || c.recommended_route
+                  return (
+                    <tr
+                      key={c.case_id}
+                      className={`hover:bg-slate-50 transition-colors ${isSafety ? 'bg-red-50' : ''}`}
+                    >
+                      {/* Case ID — links to full detail page */}
+                      <td className="px-4 py-3 font-mono text-xs text-[#E31837] whitespace-nowrap">
+                        <Link
+                          href={`/cases/${c.case_id}`}
+                          className="hover:underline font-semibold"
+                        >
+                          {c.case_id}
+                        </Link>
+                      </td>
 
-              return (
-                <div
-                  key={c.case_id}
-                  className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all ${
-                    isSafety ? 'border-red-300' : 'border-gray-100'
-                  }`}
-                >
-                  {/* Summary row */}
-                  <button
-                    onClick={() => setExpanded(isOpen ? null : c.case_id)}
-                    className="w-full text-left px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-2 hover:bg-slate-50 transition-colors"
-                  >
-                    {/* Case ID */}
-                    <div className="font-mono text-xs text-[#E31837] font-semibold min-w-[120px]">
-                      {c.case_id}
-                    </div>
+                      {/* Caller name */}
+                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
+                        {c.caller_name}
+                      </td>
 
-                    {/* Caller */}
-                    <div className="min-w-[140px]">
-                      <div className="font-semibold text-slate-800 text-sm">{c.caller_name}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">{formatPhone(c.from_number || c.caller_phone)}</div>
-                    </div>
+                      {/* Phone */}
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-xs">
+                        {formatPhone(c.from_number || c.caller_phone)}
+                      </td>
 
-                    {/* Date */}
-                    <div className="text-xs text-slate-400 min-w-[130px]">
-                      {formatDate(c.created_at)}
-                    </div>
+                      {/* Vehicle */}
+                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap max-w-[160px] truncate text-xs">
+                        {c.vehicle}
+                      </td>
 
-                    {/* Vehicle */}
-                    <div className="text-xs text-slate-500 italic max-w-[160px] truncate">
-                      {c.vehicle}
-                    </div>
+                      {/* Issue category from post-call analysis */}
+                      <td className="px-4 py-3 text-slate-600 capitalize whitespace-nowrap text-xs">
+                        {cad?.issue_category ?? '—'}
+                      </td>
 
-                    {/* Route badge */}
-                    <Badge
-                      label={ROUTE_LABEL[c.recommended_route] ?? c.recommended_route}
-                      color={ROUTE_COLOR[c.recommended_route] ?? 'bg-gray-100 text-gray-600'}
-                    />
+                      {/* Route */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ROUTE_COLOR[route] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {ROUTE_LABEL[route] ?? route}
+                        </span>
+                      </td>
 
-                    {/* Status badge */}
-                    <Badge
-                      label={c.status}
-                      color={STATUS_COLOR[c.status] ?? 'bg-slate-100 text-slate-500'}
-                    />
+                      {/* Sentiment */}
+                      <td className="px-4 py-3 whitespace-nowrap text-xs">
+                        {c.user_sentiment ? (
+                          <span className={`font-medium ${SENTIMENT_COLOR[c.user_sentiment] ?? 'text-slate-400'}`}>
+                            {c.user_sentiment}
+                          </span>
+                        ) : '—'}
+                      </td>
 
-                    {/* Sentiment */}
-                    {c.user_sentiment && (
-                      <span className={`text-xs font-medium ${SENTIMENT_COLOR[c.user_sentiment] ?? 'text-slate-400'}`}>
-                        {c.user_sentiment}
-                      </span>
-                    )}
+                      {/* Caller satisfaction */}
+                      <td className="px-4 py-3 whitespace-nowrap text-xs capitalize text-slate-500">
+                        {cad?.caller_satisfaction ?? '—'}
+                      </td>
 
-                    <div className="ml-auto text-slate-300 text-xs">
-                      {isOpen ? '▲' : '▼'}
-                    </div>
-                  </button>
+                      {/* Follow-up required */}
+                      <td className="px-4 py-3 whitespace-nowrap text-xs">
+                        {cad?.follow_up_required
+                          ? <span className={cad.follow_up_required === 'yes' ? 'text-red-500 font-medium' : 'text-slate-400'}>{cad.follow_up_required === 'yes' ? 'Yes' : 'No'}</span>
+                          : '—'}
+                      </td>
 
-                  {/* Expanded detail panel */}
-                  {isOpen && (
-                    <div className={`border-t px-5 py-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 ${
-                      isSafety ? 'border-red-200 bg-red-50/40' : 'border-gray-100 bg-slate-50/60'
-                    }`}>
-                      {/* Case info */}
-                      <Section title="Case Details">
-                        <Field label="Case ID" value={
-                          <Link href={`/cases/${c.case_id}`} className="font-mono text-xs text-[#E31837] hover:underline">
-                            {c.case_id}
-                          </Link>
-                        } />
-                        <Field label="Call ID" value={<span className="font-mono text-xs">{c.call_id || '—'}</span>} />
-                        <Field label="Created" value={formatDate(c.created_at)} />
-                        <Field label="Status" value={<Badge label={c.status} color={STATUS_COLOR[c.status] ?? 'bg-slate-100 text-slate-500'} />} />
-                        <Field label="Phone" value={formatPhone(c.from_number || c.caller_phone)} />
-                        {(c.caller_email || cad?.caller_email) && (
-                          <Field label="Email" value={<span className="text-xs">{c.caller_email ?? cad?.caller_email}</span>} />
-                        )}
-                        {c.recording_url && (
-                          <Field label="Recording" value={
-                            <a href={c.recording_url} target="_blank" rel="noreferrer" className="text-[#E31837] hover:underline text-xs">
-                              Listen
-                            </a>
-                          } />
-                        )}
-                        {c.call_completion_rating && (
-                          <Field label="Call Successful" value={c.call_completion_rating} />
-                        )}
-                      </Section>
+                      {/* Status */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[c.status] ?? 'bg-slate-100 text-slate-500'}`}>
+                          {c.status}
+                        </span>
+                      </td>
 
-                      {/* Post-call analysis */}
-                      <Section title="Post-Call Analysis">
-                        <Field label="Issue Category" value={<span className="capitalize">{cad?.issue_category ?? '—'}</span>} />
-                        <Field label="Vehicle" value={cad?.vehicle_model ?? c.vehicle ?? '—'} />
-                        <Field label="Route" value={
-                          <Badge
-                            label={ROUTE_LABEL[c.recommended_route] ?? c.recommended_route}
-                            color={ROUTE_COLOR[c.recommended_route] ?? 'bg-gray-100 text-gray-600'}
-                          />
-                        } />
-                        {c.user_sentiment && (
-                          <Field label="Sentiment" value={
-                            <span className={`font-medium ${SENTIMENT_COLOR[c.user_sentiment] ?? ''}`}>
-                              {c.user_sentiment}
-                            </span>
-                          } />
-                        )}
-                        {cad?.caller_satisfaction && (
-                          <Field label="Satisfaction" value={
-                            <Badge
-                              label={cad.caller_satisfaction}
-                              color={SATISFACTION_COLOR[cad.caller_satisfaction] ?? 'bg-gray-100 text-gray-600'}
-                            />
-                          } />
-                        )}
-                        {c.analysis?.confidence_level && (
-                          <Field label="AI Confidence" value={
-                            <span className="capitalize">{c.analysis.confidence_level}</span>
-                          } />
-                        )}
-                        {c.analysis?.likely_issue && (
-                          <Field label="Likely Issue" value={c.analysis.likely_issue} />
-                        )}
-                      </Section>
-
-                      {/* Outcomes */}
-                      <Section title="Outcomes">
-                        <Field label="Visual Diagnostic" value={
-                          cad?.visual_diagnostic_used
-                            ? <span className="capitalize text-xs">{cad.visual_diagnostic_used.replace(/_/g, ' ')}</span>
-                            : '—'
-                        } />
-                        <Field label="Follow-Up" value={<YesNo value={cad?.follow_up_required} />} />
-                        <Field label="Escalation Reason" value={
-                          <span className="text-xs leading-relaxed">{c.escalation_reason || '—'}</span>
-                        } />
-                        {cad?.session_id && (
-                          <Field label="Session ID" value={<span className="font-mono text-xs">{cad.session_id}</span>} />
-                        )}
-                      </Section>
-
-                      {/* Summaries */}
-                      {(c.call_summary || cad?.resolution_provided || c.issue_description) && (
-                        <div className="sm:col-span-2 lg:col-span-3 space-y-3">
-                          {c.issue_description && (
-                            <div>
-                              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Issue Description</div>
-                              <p className="text-sm text-slate-700 leading-relaxed">{c.issue_description}</p>
-                            </div>
-                          )}
-                          {c.call_summary && (
-                            <div>
-                              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Call Summary</div>
-                              <p className="text-sm text-slate-700 leading-relaxed">{c.call_summary}</p>
-                            </div>
-                          )}
-                          {cad?.resolution_provided && (
-                            <div>
-                              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Resolution Provided</div>
-                              <p className="text-sm text-slate-700 leading-relaxed">{cad.resolution_provided}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                      {/* AI confidence — shown only if analysis present */}
+                      <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
+                        {formatDate(c.created_at)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

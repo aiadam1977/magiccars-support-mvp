@@ -20,6 +20,7 @@ interface AnalysisResult {
 
 interface CallMetadata {
   call_id: string
+  from_number?: string
   recording_url?: string
   public_log_url?: string
   transcript?: string
@@ -30,6 +31,7 @@ interface CallMetadata {
   call_summary?: string
   call_completion_rating?: string
   dynamic_variables?: Record<string, unknown>
+  custom_analysis_data?: Record<string, string>
   stored_at: string
 }
 
@@ -48,6 +50,9 @@ interface ServiceCase {
   status: string
   analysis?: AnalysisResult
   call_metadata?: CallMetadata
+  // Surfaced by the API from call_metadata for convenience
+  from_number?: string
+  custom_analysis_data?: Record<string, string>
   file_path?: string
   file_name?: string
   file_type?: string
@@ -243,7 +248,44 @@ function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
         </div>
       )}
 
-      {/* Post-call extracted variables */}
+      {/* Post-call analysis data */}
+      {meta.custom_analysis_data && Object.keys(meta.custom_analysis_data).length > 0 && (
+        <div className="card">
+          <Section title="Post-Call Analysis">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { key: 'issue_category', label: 'Issue Category' },
+                { key: 'vehicle_model', label: 'Vehicle' },
+                { key: 'recommended_route', label: 'Route' },
+                { key: 'caller_satisfaction', label: 'Caller Satisfaction' },
+                { key: 'visual_diagnostic_used', label: 'Visual Diagnostic' },
+                { key: 'follow_up_required', label: 'Follow-Up Required' },
+                { key: 'service_case_created', label: 'Case Created' },
+                { key: 'caller_email', label: 'Caller Email' },
+                { key: 'session_id', label: 'Session ID' },
+                { key: 'case_id', label: 'Case ID' },
+              ].map(({ key, label }) => {
+                const val = meta.custom_analysis_data?.[key]
+                if (!val) return null
+                return (
+                  <div key={key} className="bg-slate-50 rounded-lg px-3 py-2.5">
+                    <p className="text-xs text-slate-400 mb-0.5">{label}</p>
+                    <p className="text-xs font-medium text-slate-700 capitalize break-all">{val.replace(/_/g, ' ')}</p>
+                  </div>
+                )
+              })}
+            </div>
+            {meta.custom_analysis_data.resolution_provided && (
+              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                <p className="text-xs text-slate-400 mb-1">Resolution Provided</p>
+                <p className="text-xs text-slate-700 leading-relaxed">{meta.custom_analysis_data.resolution_provided}</p>
+              </div>
+            )}
+          </Section>
+        </div>
+      )}
+
+      {/* Dynamic variables (legacy / other extracted vars) */}
       {dynVars.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-2">
