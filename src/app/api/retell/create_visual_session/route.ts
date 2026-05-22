@@ -107,6 +107,7 @@ async function sendSms(to: string, body: string): Promise<{ success: boolean; er
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    console.info('[create_visual_session] raw body:', JSON.stringify(body))
 
     const {
       call_id = '',
