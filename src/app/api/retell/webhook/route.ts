@@ -16,7 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getAllCases, getCase } from '@/lib/db'
+import { getAllCases, getCase, saveCallPhone } from '@/lib/db'
 import { createClient } from '@vercel/kv'
 
 // We need a custom kv client here since this file doesn't import from db.ts directly.
@@ -56,6 +56,8 @@ interface RetellCallObject {
   call_type?: string
   agent_id?: string
   call_status?: string
+  from_number?: string
+  to_number?: string
   start_timestamp?: number
   end_timestamp?: number
   duration_ms?: number
@@ -112,14 +114,27 @@ export async function POST(req: NextRequest) {
     rawBody = await req.text()
     const payload = JSON.parse(rawBody) as RetellWebhookPayload
 
-    // Only process post-call events
-    if (payload.event !== 'call_ended' && payload.event !== 'call_analyzed') {
-      return NextResponse.json({ success: true, skipped: true, reason: `Ignored event: ${payload.event}` })
-    }
-
     const call = payload.call
     if (!call?.call_id) {
       return NextResponse.json({ success: false, error: 'No call_id in payload.' }, { status: 400 })
+    }
+
+    // On call_started: cache the caller's phone number immediately.
+    // create_visual_session reads this from KV so it never depends on the LLM passing it.
+    if (payload.event === 'call_started') {
+      const phone = call.from_number ?? ''
+      if (phone) {
+        await saveCallPhone(call.call_id, phone)
+        console.info(`[webhook] call_started — cached phone ${phone} for call ${call.call_id}`)
+      } else {
+        console.warn(`[webhook] call_started — no from_number in payload for call ${call.call_id}`)
+      }
+      return NextResponse.json({ success: true, event: 'call_started', call_id: call.call_id, phone_cached: !!phone })
+    }
+
+    // Only process post-call events beyond this point
+    if (payload.event !== 'call_ended' && payload.event !== 'call_analyzed') {
+      return NextResponse.json({ success: true, skipped: true, reason: `Ignored event: ${payload.event}` })
     }
 
     // Build the metadata object from whatever Retell sends

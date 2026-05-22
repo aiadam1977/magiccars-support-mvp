@@ -118,6 +118,18 @@ export interface EmailTemplate {
   updated_at: string
 }
 
+// ─── Call phone cache ────────────────────────────────────────────────────────
+// Written on call_started so create_visual_session never needs to ask the LLM
+// or call the Retell API — phone is in KV before Harold calls any tool.
+
+export async function saveCallPhone(call_id: string, phone: string): Promise<void> {
+  await kv.set(`mc:call-phone:${call_id}`, phone, { ex: 60 * 60 * 24 }) // 24 h TTL
+}
+
+export async function getCallPhone(call_id: string): Promise<string | null> {
+  return await kv.get<string>(`mc:call-phone:${call_id}`)
+}
+
 // ─── ID list helpers ─────────────────────────────────────────────────────────
 // Store ordered ID lists as plain JSON arrays. Newest entries are prepended so
 // reads are always newest-first. kv.get / kv.set are the most reliable ops in

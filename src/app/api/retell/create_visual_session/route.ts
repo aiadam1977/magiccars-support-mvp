@@ -11,36 +11,32 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { createSession, VisualSession } from '@/lib/db'
+import { createSession, getCallPhone, VisualSession } from '@/lib/db'
 
+/** Returns true if the string is an uninterpolated Retell template like {{from_number}} */
+function isTemplateLiteral(val: string): boolean {
+  return /^\{\{.*\}\}$/.test(val.trim())
+}
+
+/**
+ * Phone resolution order:
+ *   1. KV cache — written by the webhook on call_started (most reliable)
+ *   2. Body param caller_phone — if LLM happened to pass it
+ */
 async function resolveCallerPhone(
-  caller_phone: string,
+  body_phone: string,
   call_id: string
 ): Promise<string> {
-  if (caller_phone) return caller_phone
-
-  if (!call_id) return ''
-
-  const retellKey = process.env.RETELL_API_KEY
-  if (!retellKey) {
-    console.warn('[create_visual_session] RETELL_API_KEY not set — cannot resolve from_number')
-    return ''
+  // 1. KV cache (populated on call_started before Harold can call any tool)
+  if (call_id) {
+    const cached = await getCallPhone(call_id)
+    if (cached) return cached
   }
 
-  try {
-    const res = await fetch(`https://api.retellai.com/get-call/${call_id}`, {
-      headers: { Authorization: `Bearer ${retellKey}` },
-    })
-    if (!res.ok) {
-      console.warn('[create_visual_session] Retell get-call failed:', res.status)
-      return ''
-    }
-    const data = await res.json() as { from_number?: string }
-    return data.from_number ?? ''
-  } catch (err) {
-    console.error('[create_visual_session] Error fetching call from Retell:', err)
-    return ''
-  }
+  // 2. Body param — only if it looks like a real phone number
+  if (body_phone && !isTemplateLiteral(body_phone)) return body_phone
+
+  return ''
 }
 
 async function sendSms(to: string, body: string): Promise<{ success: boolean; error?: string }> {
@@ -92,13 +88,7 @@ export async function POST(req: NextRequest) {
       issue_description = '',
     } = body
 
-    // Phone resolution order:
-    //   1. Query param ?caller_phone= or ?from_number= (injected by Retell tool config — most reliable)
-    //   2. Body param caller_phone (if LLM passes it)
-    //   3. Retell GET /get-call/{call_id} fallback
-    const qp = req.nextUrl.searchParams
-    const qp_phone = qp.get('caller_phone') || qp.get('from_number') || ''
-    const caller_phone = await resolveCallerPhone(qp_phone || raw_phone, call_id)
+    const caller_phone = await resolveCallerPhone(raw_phone, call_id)
 
     const session_id = uuidv4()
     const base_url = process.env.APP_BASE_URL || 'https://magiccars-support-mvp.vercel.app'
