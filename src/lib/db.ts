@@ -74,10 +74,12 @@ export interface ServiceCase {
 // @vercel/kv v3 and avoid sorted-set API surface issues.
 
 async function prependId(listKey: string, id: string): Promise<void> {
-  const existing = (await kv.get<string[]>(listKey)) ?? []
-  // Deduplicate just in case, then prepend
-  const updated = [id, ...existing.filter(x => x !== id)]
-  await kv.set(listKey, updated)
+  const raw = await kv.get(listKey)
+  console.log(`[prependId] ${listKey} raw type=${typeof raw} isArray=${Array.isArray(raw)} value=${JSON.stringify(raw)}`)
+  const existing: string[] = Array.isArray(raw) ? raw : []
+  const updated = [id, ...existing.filter((x: string) => x !== id)]
+  const result = await kv.set(listKey, updated)
+  console.log(`[prependId] ${listKey} wrote ${updated.length} IDs, result=${JSON.stringify(result)}`)
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
