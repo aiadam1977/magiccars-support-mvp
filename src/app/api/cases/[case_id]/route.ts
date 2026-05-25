@@ -1,11 +1,10 @@
 /**
- * GET /api/cases/:case_id
- *
- * Returns a single support case with full details.
+ * GET  /api/cases/:case_id  — Fetch a single case with call-meta enrichment.
+ * PATCH /api/cases/:case_id  — Update editable fields (caller info, vehicle, issue, status).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCase, getCallMeta } from '@/lib/db'
+import { getCase, getCallMeta, updateCase, type CaseEditableFields } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -42,6 +41,57 @@ export async function GET(
     console.error('[GET /api/cases/:case_id] Error:', err)
     return NextResponse.json(
       { success: false, error: 'Failed to retrieve case.' },
+      { status: 500 }
+    )
+  }
+}
+
+const VALID_STATUSES = ['open', 'assigned', 'resolved'] as const
+const EDITABLE_KEYS: (keyof CaseEditableFields)[] = [
+  'caller_name',
+  'caller_phone',
+  'caller_email',
+  'vehicle',
+  'issue_description',
+  'escalation_reason',
+  'status',
+]
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { case_id: string } }
+) {
+  try {
+    const { case_id } = params
+    const body: Record<string, unknown> = await req.json()
+
+    // Only allow whitelisted fields
+    const updates: Partial<CaseEditableFields> = {}
+    for (const key of EDITABLE_KEYS) {
+      if (key in body && body[key] !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (updates as any)[key] = body[key]
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ success: false, error: 'No valid fields to update.' }, { status: 400 })
+    }
+
+    if (updates.status && !(VALID_STATUSES as readonly string[]).includes(updates.status)) {
+      return NextResponse.json({ success: false, error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
+    }
+
+    const updated = await updateCase(case_id, updates)
+    if (!updated) {
+      return NextResponse.json({ success: false, error: 'Case not found.' }, { status: 404 })
+    }
+
+    return NextResponse.json({ success: true, case: updated })
+  } catch (err) {
+    console.error('[PATCH /api/cases/:case_id] Error:', err)
+    return NextResponse.json(
+      { success: false, error: 'Failed to update case.' },
       { status: 500 }
     )
   }

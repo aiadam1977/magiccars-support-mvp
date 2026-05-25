@@ -30,6 +30,7 @@ interface CallMetadata {
   user_sentiment?: string
   call_summary?: string
   call_completion_rating?: string
+  call_successful?: boolean
   dynamic_variables?: Record<string, unknown>
   custom_analysis_data?: Record<string, string>
   stored_at: string
@@ -50,7 +51,6 @@ interface ServiceCase {
   status: string
   analysis?: AnalysisResult
   call_metadata?: CallMetadata
-  // Surfaced by the API from call_metadata for convenience
   from_number?: string
   custom_analysis_data?: Record<string, string>
   file_path?: string
@@ -58,6 +58,15 @@ interface ServiceCase {
   file_type?: string
   created_at: string
   updated_at: string
+}
+
+interface EditForm {
+  caller_name: string
+  caller_phone: string
+  caller_email: string
+  vehicle: string
+  issue_description: string
+  escalation_reason: string
 }
 
 interface EmailTemplate {
@@ -101,6 +110,24 @@ const SENTIMENT_BADGE: Record<string, string> = {
   Unknown: 'bg-slate-100 text-slate-500',
 }
 
+const STATUS_CONFIG: Record<string, { label: string; active: string; inactive: string }> = {
+  open: {
+    label: 'Open',
+    active: 'bg-yellow-100 text-yellow-800 border-yellow-300 ring-1 ring-yellow-400',
+    inactive: 'bg-white text-slate-500 border-slate-200 hover:bg-yellow-50 hover:text-yellow-700',
+  },
+  assigned: {
+    label: 'Assigned',
+    active: 'bg-blue-100 text-blue-800 border-blue-300 ring-1 ring-blue-400',
+    inactive: 'bg-white text-slate-500 border-slate-200 hover:bg-blue-50 hover:text-blue-700',
+  },
+  resolved: {
+    label: 'Resolved',
+    active: 'bg-green-100 text-green-800 border-green-300 ring-1 ring-green-400',
+    inactive: 'bg-white text-slate-500 border-slate-200 hover:bg-green-50 hover:text-green-700',
+  },
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -134,6 +161,52 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+const inputCls =
+  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837] bg-white'
+
+const textareaCls =
+  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837] bg-white resize-none leading-relaxed'
+
+// ─── Status Toggle ────────────────────────────────────────────────────────────
+
+interface StatusToggleProps {
+  current: string
+  saving: boolean
+  onChange: (status: string) => void
+}
+
+function StatusToggle({ current, saving, onChange }: StatusToggleProps) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+      {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+        <button
+          key={key}
+          onClick={() => { if (key !== current && !saving) onChange(key) }}
+          disabled={saving}
+          className={`px-3 py-1 rounded-md text-xs font-semibold border transition-all ${
+            key === current ? cfg.active : cfg.inactive
+          } ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}
+        >
+          {saving && key === current ? 'Saving…' : cfg.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Call Recording Panel ─────────────────────────────────────────────────────
+
 function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
   const [showTranscript, setShowTranscript] = useState(false)
   const [showVars, setShowVars] = useState(false)
@@ -151,39 +224,36 @@ function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
             {meta.duration_ms !== undefined && (
               <div className="bg-slate-50 rounded-lg px-3 py-2.5">
                 <p className="text-xs text-slate-400 mb-0.5">Duration</p>
-                <p className="font-semibold text-slate-700 font-mono">
-                  {formatDuration(meta.duration_ms)}
-                </p>
+                <p className="font-semibold text-slate-700 font-mono">{formatDuration(meta.duration_ms)}</p>
               </div>
             )}
             {meta.user_sentiment && (
               <div className="bg-slate-50 rounded-lg px-3 py-2.5">
                 <p className="text-xs text-slate-400 mb-0.5">Caller Sentiment</p>
-                <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                    SENTIMENT_BADGE[meta.user_sentiment] || 'bg-slate-100 text-slate-500'
-                  }`}
-                >
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${SENTIMENT_BADGE[meta.user_sentiment] || 'bg-slate-100 text-slate-500'}`}>
                   {meta.user_sentiment}
                 </span>
+              </div>
+            )}
+            {meta.call_successful !== undefined && (
+              <div className="bg-slate-50 rounded-lg px-3 py-2.5">
+                <p className="text-xs text-slate-400 mb-0.5">Call Successful</p>
+                <p className={`font-semibold text-sm ${meta.call_successful ? 'text-green-600' : 'text-red-500'}`}>
+                  {meta.call_successful ? 'Yes' : 'No'}
+                </p>
               </div>
             )}
             {meta.call_completion_rating && (
               <div className="bg-slate-50 rounded-lg px-3 py-2.5">
                 <p className="text-xs text-slate-400 mb-0.5">Completion</p>
-                <p className="font-semibold text-slate-700 text-sm">
-                  {meta.call_completion_rating}
-                </p>
+                <p className="font-semibold text-slate-700 text-sm">{meta.call_completion_rating}</p>
               </div>
             )}
             {meta.stored_at && (
               <div className="bg-slate-50 rounded-lg px-3 py-2.5">
                 <p className="text-xs text-slate-400 mb-0.5">Webhook Received</p>
                 <p className="text-xs text-slate-500">
-                  {new Date(meta.stored_at).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
+                  {new Date(meta.stored_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                 </p>
               </div>
             )}
@@ -200,19 +270,9 @@ function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
       {meta.recording_url && (
         <div className="card">
           <Section title="Call Recording">
-            <audio
-              controls
-              src={meta.recording_url}
-              className="w-full"
-              preload="metadata"
-            />
+            <audio controls src={meta.recording_url} className="w-full" preload="metadata" />
             {meta.public_log_url && (
-              <a
-                href={meta.public_log_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-[#E31837] hover:underline mt-2 inline-block"
-              >
+              <a href={meta.public_log_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#E31837] hover:underline mt-2 inline-block">
                 View full call log in Retell →
               </a>
             )}
@@ -224,26 +284,17 @@ function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
       {meta.transcript && (
         <div className="card">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Call Transcript
-            </h3>
-            <button
-              onClick={() => setShowTranscript(s => !s)}
-              className="text-xs text-[#E31837] hover:underline font-medium"
-            >
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Call Transcript</h3>
+            <button onClick={() => setShowTranscript(s => !s)} className="text-xs text-[#E31837] hover:underline font-medium">
               {showTranscript ? 'Collapse' : 'Expand'}
             </button>
           </div>
           {showTranscript ? (
             <div className="max-h-72 overflow-y-auto">
-              <pre className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed font-sans">
-                {meta.transcript}
-              </pre>
+              <pre className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed font-sans">{meta.transcript}</pre>
             </div>
           ) : (
-            <p className="text-xs text-slate-400 italic line-clamp-2">
-              {meta.transcript.slice(0, 200)}…
-            </p>
+            <p className="text-xs text-slate-400 italic line-clamp-2">{meta.transcript.slice(0, 200)}…</p>
           )}
         </div>
       )}
@@ -285,29 +336,20 @@ function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
         </div>
       )}
 
-      {/* Dynamic variables (legacy / other extracted vars) */}
+      {/* Dynamic variables */}
       {dynVars.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Extracted Post-Call Variables
-            </h3>
-            <button
-              onClick={() => setShowVars(s => !s)}
-              className="text-xs text-[#E31837] hover:underline font-medium"
-            >
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Extracted Post-Call Variables</h3>
+            <button onClick={() => setShowVars(s => !s)} className="text-xs text-[#E31837] hover:underline font-medium">
               {showVars ? 'Collapse' : `Show all ${dynVars.length}`}
             </button>
           </div>
           <div className={`space-y-1 ${!showVars ? 'max-h-32 overflow-hidden' : ''}`}>
             {dynVars.map(([key, value]) => (
               <div key={key} className="flex items-start justify-between gap-3 py-1.5 border-b border-slate-50 last:border-0">
-                <span className="text-xs font-mono text-slate-400 flex-shrink-0">
-                  {key}
-                </span>
-                <span className="text-xs text-slate-700 text-right">
-                  {String(value)}
-                </span>
+                <span className="text-xs font-mono text-slate-400 flex-shrink-0">{key}</span>
+                <span className="text-xs text-slate-700 text-right">{String(value)}</span>
               </div>
             ))}
           </div>
@@ -348,8 +390,7 @@ function SendEmailModal({ serviceCase, onClose }: SendEmailModalProps) {
     vehicle: serviceCase.vehicle,
     issue_description: serviceCase.issue_description,
     recommended_route: serviceCase.recommended_route,
-    analysis_summary:
-      serviceCase.analysis?.service_case_summary || serviceCase.analysis_summary || '',
+    analysis_summary: serviceCase.analysis?.service_case_summary || serviceCase.analysis_summary || '',
   }
 
   useEffect(() => {
@@ -370,17 +411,12 @@ function SendEmailModal({ serviceCase, onClose }: SendEmailModalProps) {
   async function handleSend() {
     if (!overrideEmail.trim()) { setError('An email address is required.'); return }
     if (!selectedId) { setError('Please select a template.'); return }
-    setSending(true)
-    setError('')
+    setSending(true); setError('')
     try {
       const res = await fetch('/api/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          case_id: serviceCase.case_id,
-          template_id: selectedId,
-          override_email: overrideEmail.trim(),
-        }),
+        body: JSON.stringify({ case_id: serviceCase.case_id, template_id: selectedId, override_email: overrideEmail.trim() }),
       })
       const d = await res.json()
       if (d.success) { setSent(true); setSentMessage(d.message) }
@@ -414,13 +450,7 @@ function SendEmailModal({ serviceCase, onClose }: SendEmailModalProps) {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Send To</label>
-                <input
-                  type="email"
-                  value={overrideEmail}
-                  onChange={e => setOverrideEmail(e.target.value)}
-                  placeholder="caller@email.com"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]"
-                />
+                <input type="email" value={overrideEmail} onChange={e => setOverrideEmail(e.target.value)} placeholder="caller@email.com" className={inputCls} />
                 {!serviceCase.caller_email && (
                   <p className="text-xs text-amber-600 mt-1">No email captured during call — enter manually.</p>
                 )}
@@ -435,11 +465,7 @@ function SendEmailModal({ serviceCase, onClose }: SendEmailModalProps) {
                 ) : templates.length === 0 ? (
                   <div className="text-sm text-slate-400">No templates yet. <Link href="/templates" className="text-[#E31837] hover:underline">Create one →</Link></div>
                 ) : (
-                  <select
-                    value={selectedId}
-                    onChange={e => setSelectedId(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]"
-                  >
+                  <select value={selectedId} onChange={e => setSelectedId(e.target.value)} className={inputCls}>
                     {templates.map(t => <option key={t.template_id} value={t.template_id}>{t.name}</option>)}
                   </select>
                 )}
@@ -478,19 +504,95 @@ export default function CaseDetailPage() {
   const { case_id } = useParams() as { case_id: string }
   const [serviceCase, setServiceCase] = useState<ServiceCase | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [showEmailModal, setShowEmailModal] = useState(false)
+
+  // Edit state
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState<EditForm>({
+    caller_name: '',
+    caller_phone: '',
+    caller_email: '',
+    vehicle: '',
+    issue_description: '',
+    escalation_reason: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+
+  // Status state (separate from full edit — saves immediately on click)
+  const [statusSaving, setStatusSaving] = useState(false)
 
   useEffect(() => {
     fetch(`/api/cases/${case_id}`)
       .then(r => r.json())
       .then(d => {
         if (d.success) setServiceCase(d.case)
-        else setError('Case not found.')
+        else setLoadError('Case not found.')
       })
-      .catch(() => setError('Failed to load case.'))
+      .catch(() => setLoadError('Failed to load case.'))
       .finally(() => setLoading(false))
   }, [case_id])
+
+  function startEditing() {
+    if (!serviceCase) return
+    setEditForm({
+      caller_name: serviceCase.caller_name,
+      caller_phone: serviceCase.caller_phone,
+      caller_email: serviceCase.caller_email || '',
+      vehicle: serviceCase.vehicle,
+      issue_description: serviceCase.issue_description,
+      escalation_reason: serviceCase.escalation_reason,
+    })
+    setSaveError('')
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    setEditing(false)
+    setSaveError('')
+  }
+
+  async function handleSave() {
+    if (!serviceCase) return
+    setSaving(true)
+    setSaveError('')
+    try {
+      const res = await fetch(`/api/cases/${case_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      })
+      const d = await res.json()
+      if (d.success) {
+        setServiceCase(prev => prev ? { ...prev, ...editForm, updated_at: d.case.updated_at } : prev)
+        setEditing(false)
+      } else {
+        setSaveError(d.error || 'Failed to save changes.')
+      }
+    } catch {
+      setSaveError('Network error — please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleStatusChange(newStatus: string) {
+    if (!serviceCase || newStatus === serviceCase.status) return
+    setStatusSaving(true)
+    try {
+      const res = await fetch(`/api/cases/${case_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        setServiceCase(prev => prev ? { ...prev, status: newStatus, updated_at: d.case.updated_at } : prev)
+      }
+    } catch { /* silent — status badge will revert on next load */ }
+    finally { setStatusSaving(false) }
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-slate-50"><Nav />
@@ -498,10 +600,10 @@ export default function CaseDetailPage() {
     </div>
   )
 
-  if (error || !serviceCase) return (
+  if (loadError || !serviceCase) return (
     <div className="min-h-screen bg-slate-50"><Nav />
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-        <p className="text-red-600 text-lg">{error || 'Case not found.'}</p>
+        <p className="text-red-600 text-lg">{loadError || 'Case not found.'}</p>
         <Link href="/cases" className="btn-primary mt-4 inline-block text-sm">Back to Cases</Link>
       </div>
     </div>
@@ -512,6 +614,113 @@ export default function CaseDetailPage() {
   const isSafety = serviceCase.recommended_route === 'safety_stop'
   const isImage = serviceCase.file_type?.startsWith('image/')
   const mediaUrl = serviceCase.file_path ? `/api/media/${serviceCase.session_id}` : null
+
+  // ─── Caller / Vehicle / Issue cards ───────────────────────────────────────
+
+  const callerCard = (
+    <div className="card">
+      <div className="flex items-start justify-between mb-2">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Parent / Caller</h3>
+      </div>
+      {editing ? (
+        <div className="space-y-3">
+          <Field label="Name">
+            <input
+              className={inputCls}
+              value={editForm.caller_name}
+              onChange={e => setEditForm(f => ({ ...f, caller_name: e.target.value }))}
+            />
+          </Field>
+          <Field label="Phone">
+            <input
+              className={inputCls}
+              value={editForm.caller_phone}
+              onChange={e => setEditForm(f => ({ ...f, caller_phone: e.target.value }))}
+            />
+          </Field>
+          <Field label="Email">
+            <input
+              type="email"
+              className={inputCls}
+              value={editForm.caller_email}
+              placeholder="No email on file"
+              onChange={e => setEditForm(f => ({ ...f, caller_email: e.target.value }))}
+            />
+          </Field>
+        </div>
+      ) : (
+        <>
+          <p className="font-semibold text-slate-800">{serviceCase.caller_name}</p>
+          <p className="text-slate-500 text-sm">{serviceCase.caller_phone}</p>
+          {serviceCase.caller_email && <p className="text-slate-500 text-sm">{serviceCase.caller_email}</p>}
+          {!serviceCase.caller_email && <p className="text-xs text-amber-500 mt-1">No email on file</p>}
+        </>
+      )}
+    </div>
+  )
+
+  const vehicleCard = (
+    <div className="card">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Vehicle</h3>
+      {editing ? (
+        <input
+          className={inputCls}
+          value={editForm.vehicle}
+          onChange={e => setEditForm(f => ({ ...f, vehicle: e.target.value }))}
+        />
+      ) : (
+        <p className="font-semibold text-slate-800">{serviceCase.vehicle}</p>
+      )}
+    </div>
+  )
+
+  const statusCard = (
+    <div className="card">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Case Status</h3>
+      <StatusToggle
+        current={serviceCase.status}
+        saving={statusSaving}
+        onChange={handleStatusChange}
+      />
+      {serviceCase.updated_at && (
+        <p className="text-xs text-slate-300 mt-2">
+          Updated {new Date(serviceCase.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        </p>
+      )}
+    </div>
+  )
+
+  const issueCard = (
+    <div className="card">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Issue Reported</h3>
+      {editing ? (
+        <textarea
+          rows={4}
+          className={textareaCls}
+          value={editForm.issue_description}
+          onChange={e => setEditForm(f => ({ ...f, issue_description: e.target.value }))}
+        />
+      ) : (
+        <p className="text-slate-700 text-sm leading-relaxed">{serviceCase.issue_description}</p>
+      )}
+    </div>
+  )
+
+  const escalationCard = serviceCase.escalation_reason ? (
+    <div className={`card ${isSafety ? 'border-red-300 bg-red-50' : 'border-red-100'}`}>
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Escalation Reason</h3>
+      {editing ? (
+        <textarea
+          rows={3}
+          className={textareaCls}
+          value={editForm.escalation_reason}
+          onChange={e => setEditForm(f => ({ ...f, escalation_reason: e.target.value }))}
+        />
+      ) : (
+        <p className="text-slate-700 text-sm">{serviceCase.escalation_reason}</p>
+      )}
+    </div>
+  ) : null
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -557,54 +766,50 @@ export default function CaseDetailPage() {
                   )}
                 </>
               )}
-              <button onClick={() => setShowEmailModal(true)} className="btn-primary text-xs flex items-center gap-1.5">
-                ✉ Send Email
-              </button>
+              {editing ? (
+                <>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="btn-primary text-xs disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                  <button onClick={cancelEditing} className="btn-secondary text-xs">Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={startEditing} className="btn-secondary text-xs flex items-center gap-1.5">
+                    ✏ Edit Details
+                  </button>
+                  <button onClick={() => setShowEmailModal(true)} className="btn-primary text-xs flex items-center gap-1.5">
+                    ✉ Send Email
+                  </button>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Save error */}
+          {saveError && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {saveError}
+            </div>
+          )}
         </div>
 
-        {/* ── Three-column layout for cases with call recording ── */}
+        {/* ── Layout with call recording ── */}
         {meta ? (
           <div className="space-y-5">
-            {/* Top row: caller info + vehicle + issue */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div className="space-y-4">
-                <div className="card">
-                  <Section title="Parent / Caller">
-                    <p className="font-semibold text-slate-800">{serviceCase.caller_name}</p>
-                    <p className="text-slate-500 text-sm">{serviceCase.caller_phone}</p>
-                    {serviceCase.caller_email && <p className="text-slate-500 text-sm">{serviceCase.caller_email}</p>}
-                    {!serviceCase.caller_email && <p className="text-xs text-amber-500 mt-1">No email on file</p>}
-                  </Section>
-                </div>
-                <div className="card">
-                  <Section title="Vehicle">
-                    <p className="font-semibold text-slate-800">{serviceCase.vehicle}</p>
-                  </Section>
-                </div>
-                <div className="card">
-                  <Section title="Case Status">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                      {serviceCase.status}
-                    </span>
-                  </Section>
-                </div>
+                {callerCard}
+                {vehicleCard}
+                {statusCard}
               </div>
-
               <div className="md:col-span-2 space-y-4">
-                <div className="card">
-                  <Section title="Issue Reported">
-                    <p className="text-slate-700 text-sm leading-relaxed">{serviceCase.issue_description}</p>
-                  </Section>
-                </div>
-                {serviceCase.escalation_reason && (
-                  <div className={`card ${isSafety ? 'border-red-300 bg-red-50' : 'border-red-100'}`}>
-                    <Section title="Escalation Reason">
-                      <p className="text-slate-700 text-sm">{serviceCase.escalation_reason}</p>
-                    </Section>
-                  </div>
-                )}
+                {issueCard}
+                {escalationCard}
                 {a && (
                   <div className="card">
                     <Section title="AI Likely Issue">
@@ -615,7 +820,7 @@ export default function CaseDetailPage() {
               </div>
             </div>
 
-            {/* Call recording section — full width */}
+            {/* Call recording section */}
             <div>
               <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[#E31837] inline-block"></span>
@@ -624,7 +829,7 @@ export default function CaseDetailPage() {
               <CallRecordingPanel meta={meta} />
             </div>
 
-            {/* Media + full AI analysis */}
+            {/* Visual diagnostic */}
             {(mediaUrl || a) && (
               <div>
                 <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -682,46 +887,20 @@ export default function CaseDetailPage() {
             )}
           </div>
         ) : (
-          /* ── Original two-column layout when no call recording yet ── */
+          /* ── Layout without call recording ── */
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div className="space-y-4">
-              <div className="card">
-                <Section title="Parent / Caller">
-                  <p className="font-semibold text-slate-800">{serviceCase.caller_name}</p>
-                  <p className="text-slate-500 text-sm">{serviceCase.caller_phone}</p>
-                  {serviceCase.caller_email && <p className="text-slate-500 text-sm">{serviceCase.caller_email}</p>}
-                  {!serviceCase.caller_email && <p className="text-xs text-amber-500 mt-1">No email on file</p>}
-                </Section>
-              </div>
-              <div className="card">
-                <Section title="Vehicle">
-                  <p className="font-semibold text-slate-800">{serviceCase.vehicle}</p>
-                </Section>
-              </div>
-              <div className="card">
-                <Section title="Issue Reported">
-                  <p className="text-slate-700 text-sm leading-relaxed">{serviceCase.issue_description}</p>
-                </Section>
-              </div>
-              {serviceCase.escalation_reason && (
-                <div className={`card ${isSafety ? 'border-red-300 bg-red-50' : 'border-red-100'}`}>
-                  <Section title="Escalation Reason">
-                    <p className="text-slate-700 text-sm">{serviceCase.escalation_reason}</p>
-                  </Section>
-                </div>
-              )}
-              <div className="card">
-                <Section title="Case Status">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">{serviceCase.status}</span>
-                </Section>
-              </div>
+              {callerCard}
+              {vehicleCard}
+              {statusCard}
               <div className="card border-dashed border-slate-200 bg-slate-50 text-center py-4">
                 <p className="text-xs text-slate-400">⏳ Call recording not yet received</p>
                 <p className="text-xs text-slate-300 mt-1">Arrives via Retell webhook after call ends</p>
               </div>
             </div>
-
             <div className="md:col-span-2 space-y-4">
+              {issueCard}
+              {escalationCard}
               {mediaUrl && (
                 <div className="card">
                   <Section title="Uploaded Media">
@@ -771,9 +950,19 @@ export default function CaseDetailPage() {
           </div>
         )}
 
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex gap-3 flex-wrap">
           <Link href="/cases" className="btn-secondary text-sm">Back to All Cases</Link>
-          <button onClick={() => setShowEmailModal(true)} className="btn-primary text-sm">✉ Send Email to Caller</button>
+          {!editing && (
+            <button onClick={() => setShowEmailModal(true)} className="btn-primary text-sm">✉ Send Email to Caller</button>
+          )}
+          {editing && (
+            <>
+              <button onClick={handleSave} disabled={saving} className="btn-primary text-sm disabled:opacity-50">
+                {saving ? 'Saving…' : 'Save Changes'}
+              </button>
+              <button onClick={cancelEditing} className="btn-secondary text-sm">Cancel</button>
+            </>
+          )}
           <Link href="/demo" className="btn-secondary text-sm">New Demo Session</Link>
         </div>
       </div>

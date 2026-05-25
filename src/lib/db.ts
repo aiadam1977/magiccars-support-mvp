@@ -241,6 +241,26 @@ export async function getAllCases(): Promise<ServiceCase[]> {
   return cases.filter((c): c is ServiceCase => c !== null)
 }
 
+export type CaseEditableFields = Pick<
+  ServiceCase,
+  'caller_name' | 'caller_phone' | 'caller_email' | 'vehicle' | 'issue_description' | 'escalation_reason' | 'status'
+>
+
+export async function updateCase(
+  case_id: string,
+  updates: Partial<CaseEditableFields>
+): Promise<ServiceCase | null> {
+  const existing = await kv.get<ServiceCase>(`mc:case:${case_id}`)
+  if (!existing) return null
+  const updated: ServiceCase = {
+    ...existing,
+    ...updates,
+    updated_at: new Date().toISOString(),
+  }
+  await kv.set(`mc:case:${case_id}`, updated)
+  return updated
+}
+
 // ─── Email Templates ──────────────────────────────────────────────────────────
 
 export async function createTemplate(template: EmailTemplate): Promise<EmailTemplate> {
