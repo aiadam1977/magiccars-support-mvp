@@ -9,6 +9,7 @@ interface CallRecord {
   from_number?: string
   call_summary?: string
   call_completion_rating?: string
+  call_successful?: boolean
   user_sentiment?: string
   duration_ms?: number
   start_timestamp?: number
@@ -252,8 +253,18 @@ export default function CallsPage() {
                         <Field label="Date" value={formatDate(call.start_timestamp || call.stored_at)} />
                         <Field label="Duration" value={formatDuration(call.duration_ms)} />
                         <Field label="Phone" value={formatPhone(call.from_number)} />
+                        {call.call_successful !== undefined && (
+                          <Field
+                            label="Call Successful"
+                            value={
+                              <span className={`font-medium ${call.call_successful ? 'text-green-600' : 'text-red-500'}`}>
+                                {call.call_successful ? 'Yes' : 'No'}
+                              </span>
+                            }
+                          />
+                        )}
                         {call.call_completion_rating && (
-                          <Field label="Call Successful" value={call.call_completion_rating} />
+                          <Field label="Completion" value={call.call_completion_rating} />
                         )}
                         {call.recording_url && (
                           <Field

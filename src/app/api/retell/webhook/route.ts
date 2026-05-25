@@ -54,6 +54,8 @@ interface RetellCallAnalysis {
   user_sentiment?: 'Positive' | 'Negative' | 'Neutral' | 'Unknown'
   agent_sentiment?: string
   call_completion_rating?: string
+  /** Boolean flag from Retell — true if the call was completed successfully */
+  call_successful?: boolean
   custom_analysis_data?: Record<string, unknown>
 }
 
@@ -123,71 +125,134 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, event: 'call_started', call_id: call.call_id, phone_cached: !!phone })
     }
 
-    // Only process post-call events beyond this point
-    if (payload.event !== 'call_ended' && payload.event !== 'call_analyzed') {
-      return NextResponse.json({ success: true, skipped: true, reason: `Ignored event: ${payload.event}` })
-    }
+    // ─── call_ended ────────────────────────────────────────────────────────────
+    // Retell fires this when the call hangs up.  Carries recording URL,
+    // transcript, duration, timestamps, and from_number.  The call_analysis
+    // block is typically absent or minimal here — full analysis arrives later
+    // on call_analyzed.
+    if (payload.event === 'call_ended') {
+      console.info(`[webhook] call_ended — call_id: ${call.call_id}`)
+      console.info(`[webhook] call_ended full payload: ${JSON.stringify(payload)}`)
 
-    // Extract custom_analysis_data (post_call_analysis_data fields from Harold LLM config)
-    const rawCustom = call.call_analysis?.custom_analysis_data
-    const custom_analysis_data: Record<string, string> | undefined =
-      rawCustom && typeof rawCustom === 'object' && !Array.isArray(rawCustom)
-        ? Object.fromEntries(
-            Object.entries(rawCustom).map(([k, v]) => [k, String(v ?? '')])
-          )
-        : undefined
-
-    // Build the metadata update — upsertCallMeta deep-merges with the existing record
-    // so from_number set during call_started is preserved.
-    const metaUpdate: Partial<CallMetadata> = {
-      stored_at: new Date().toISOString(),
-      ...(call.from_number && { from_number: call.from_number }),
-      ...(call.recording_url && { recording_url: call.recording_url }),
-      ...(call.public_log_url && { public_log_url: call.public_log_url }),
-      ...(call.transcript && { transcript: call.transcript }),
-      ...(call.transcript_object && { transcript_object: call.transcript_object }),
-      ...(call.duration_ms !== undefined && { duration_ms: call.duration_ms }),
-      ...(call.start_timestamp !== undefined && { start_timestamp: call.start_timestamp }),
-      ...(call.end_timestamp !== undefined && { end_timestamp: call.end_timestamp }),
-      ...(call.call_analysis?.user_sentiment && { user_sentiment: call.call_analysis.user_sentiment }),
-      ...(call.call_analysis?.call_summary && { call_summary: call.call_analysis.call_summary }),
-      ...(call.call_analysis?.call_completion_rating && {
-        call_completion_rating: call.call_analysis.call_completion_rating,
-      }),
-      ...(call.retell_llm_dynamic_variables && {
-        dynamic_variables: call.retell_llm_dynamic_variables,
-      }),
-      ...(custom_analysis_data && { custom_analysis_data }),
-    }
-
-    const meta = await upsertCallMeta(call.call_id, metaUpdate)
-
-    // Attempt to match this call to a case by call_id and attach the metadata
-    let matched = false
-    const cases = await getAllCases()
-    const matchedCase = cases.find(c => c.call_id === call.call_id)
-
-    if (matchedCase) {
-      // Merge metadata onto the case record
-      const existing = await getCase(matchedCase.case_id)
-      if (existing) {
-        const updated = {
-          ...existing,
-          call_metadata: meta,
-          updated_at: new Date().toISOString(),
-        }
-        await kv.set(`mc:case:${matchedCase.case_id}`, updated)
-        matched = true
+      const metaUpdate: Partial<CallMetadata> = {
+        stored_at: new Date().toISOString(),
+        ...(call.from_number && { from_number: call.from_number }),
+        ...(call.recording_url && { recording_url: call.recording_url }),
+        ...(call.public_log_url && { public_log_url: call.public_log_url }),
+        ...(call.transcript && { transcript: call.transcript }),
+        ...(call.transcript_object && { transcript_object: call.transcript_object }),
+        ...(call.duration_ms !== undefined && { duration_ms: call.duration_ms }),
+        ...(call.start_timestamp !== undefined && { start_timestamp: call.start_timestamp }),
+        ...(call.end_timestamp !== undefined && { end_timestamp: call.end_timestamp }),
+        ...(call.retell_llm_dynamic_variables && {
+          dynamic_variables: call.retell_llm_dynamic_variables,
+        }),
+        // call_analysis fields may arrive early on call_ended — capture if present
+        ...(call.call_analysis?.user_sentiment && { user_sentiment: call.call_analysis.user_sentiment }),
+        ...(call.call_analysis?.call_summary && { call_summary: call.call_analysis.call_summary }),
+        ...(call.call_analysis?.call_completion_rating && {
+          call_completion_rating: call.call_analysis.call_completion_rating,
+        }),
+        ...(call.call_analysis?.call_successful !== undefined && {
+          call_successful: Boolean(call.call_analysis.call_successful),
+        }),
       }
+
+      const meta = await upsertCallMeta(call.call_id, metaUpdate)
+      console.info(`[webhook] call_ended stored fields: ${Object.keys(meta).join(', ')}`)
+
+      return NextResponse.json({
+        success: true,
+        event: 'call_ended',
+        call_id: call.call_id,
+        fields_stored: Object.keys(meta).filter(k => k !== 'call_id' && k !== 'stored_at'),
+      })
     }
 
-    return NextResponse.json({
-      success: true,
-      event: payload.event,
-      call_id: call.call_id,
-      matched_case: matched ? matchedCase?.case_id : null,
-      fields_stored: Object.keys(meta).filter(k => k !== 'call_id' && k !== 'stored_at'),
-    })
+    // ─── call_analyzed ──────────────────────────────────────────────────────────
+    // Retell fires this 10–60 s after call_ended once its AI analysis completes.
+    // This is the authoritative source for call_summary, user_sentiment,
+    // call_successful, and all custom_analysis_data (post_call_analysis_data).
+    if (payload.event === 'call_analyzed') {
+      console.info(`[webhook] call_analyzed — call_id: ${call.call_id}`)
+      console.info(`[webhook] call_analyzed full payload: ${JSON.stringify(payload)}`)
+
+      // Normalise custom_analysis_data to Record<string,string>.
+      // Only include if at least one field has a non-empty value.
+      const rawCustom = call.call_analysis?.custom_analysis_data
+      let custom_analysis_data: Record<string, string> | undefined
+
+      if (rawCustom && typeof rawCustom === 'object' && !Array.isArray(rawCustom)) {
+        const normalised = Object.fromEntries(
+          Object.entries(rawCustom)
+            .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '')
+            .map(([k, v]) => [k, String(v)])
+        )
+        if (Object.keys(normalised).length > 0) {
+          custom_analysis_data = normalised
+        }
+      }
+
+      console.info(`[webhook] call_analyzed — custom_analysis_data keys: ${
+        custom_analysis_data ? Object.keys(custom_analysis_data).join(', ') : 'NONE'
+      }`)
+
+      const metaUpdate: Partial<CallMetadata> = {
+        stored_at: new Date().toISOString(),
+        // call_analyzed also re-sends call fields — capture anything useful
+        ...(call.from_number && { from_number: call.from_number }),
+        ...(call.recording_url && { recording_url: call.recording_url }),
+        ...(call.transcript && { transcript: call.transcript }),
+        ...(call.duration_ms !== undefined && { duration_ms: call.duration_ms }),
+        ...(call.start_timestamp !== undefined && { start_timestamp: call.start_timestamp }),
+        ...(call.end_timestamp !== undefined && { end_timestamp: call.end_timestamp }),
+        // Analysis fields
+        ...(call.call_analysis?.user_sentiment && { user_sentiment: call.call_analysis.user_sentiment }),
+        ...(call.call_analysis?.call_summary && { call_summary: call.call_analysis.call_summary }),
+        ...(call.call_analysis?.call_completion_rating && {
+          call_completion_rating: call.call_analysis.call_completion_rating,
+        }),
+        ...(call.call_analysis?.call_successful !== undefined && {
+          call_successful: Boolean(call.call_analysis.call_successful),
+        }),
+        ...(custom_analysis_data && { custom_analysis_data }),
+      }
+
+      const meta = await upsertCallMeta(call.call_id, metaUpdate)
+      console.info(`[webhook] call_analyzed stored fields: ${Object.keys(meta).join(', ')}`)
+      if (meta.custom_analysis_data) {
+        console.info(`[webhook] call_analyzed custom_analysis_data: ${JSON.stringify(meta.custom_analysis_data)}`)
+      }
+
+      // Attach updated meta to any matching case record
+      let matched = false
+      const cases = await getAllCases()
+      const matchedCase = cases.find(c => c.call_id === call.call_id)
+
+      if (matchedCase) {
+        const existing = await getCase(matchedCase.case_id)
+        if (existing) {
+          await kv.set(`mc:case:${matchedCase.case_id}`, {
+            ...existing,
+            call_metadata: meta,
+            updated_at: new Date().toISOString(),
+          })
+          matched = true
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        event: 'call_analyzed',
+        call_id: call.call_id,
+        matched_case: matched ? matchedCase?.case_id : null,
+        custom_analysis_keys: custom_analysis_data ? Object.keys(custom_analysis_data) : [],
+        fields_stored: Object.keys(meta).filter(k => k !== 'call_id' && k !== 'stored_at'),
+      })
+    }
+
+    // Unknown event — skip
+    return NextResponse.json({ success: true, skipped: true, reason: `Ignored event: ${payload.event}` })
   } catch (err) {
     console.error('[POST /api/retell/webhook]', err)
     return NextResponse.json({ success: false, error: 'Webhook processing failed.' }, { status: 500 })

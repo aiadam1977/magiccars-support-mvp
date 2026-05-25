@@ -74,9 +74,12 @@ export interface CallMetadata {
   duration_ms?: number
   start_timestamp?: number
   end_timestamp?: number
+  /** Retell call_analysis fields — populated on call_analyzed */
   user_sentiment?: string
   call_summary?: string
   call_completion_rating?: string
+  /** Whether the call was completed successfully per Retell's analysis */
+  call_successful?: boolean
   dynamic_variables?: Record<string, unknown>
   /**
    * Structured fields extracted by Retell post_call_analysis_data.
@@ -84,6 +87,7 @@ export interface CallMetadata {
    * issue_category, vehicle_model, recommended_route, resolution_provided,
    * service_case_created, visual_diagnostic_used, caller_satisfaction,
    * follow_up_required, caller_email, session_id, case_id
+   * Only present if Retell returned at least one populated field.
    */
   custom_analysis_data?: Record<string, string>
   stored_at: string
@@ -302,17 +306,25 @@ export async function upsertCallMeta(
   updates: Partial<CallMetadata>
 ): Promise<CallMetadata> {
   const existing = await kv.get<CallMetadata>(`mc:call-meta:${call_id}`)
+
+  // Deep-merge custom_analysis_data — but ONLY write it if there is at least
+  // one populated key. Spreading two undefineds produces {} which is truthy
+  // and would make the UI think analysis data exists when it doesn't.
+  const mergedCAD = {
+    ...(existing?.custom_analysis_data ?? {}),
+    ...(updates.custom_analysis_data ?? {}),
+  }
+  const hasCAD = Object.keys(mergedCAD).length > 0
+
   const merged: CallMetadata = {
     call_id,
     stored_at: new Date().toISOString(),
     ...(existing ?? {}),
     ...updates,
-    // Deep-merge custom_analysis_data so call_started fields aren't wiped
-    custom_analysis_data: {
-      ...(existing?.custom_analysis_data ?? {}),
-      ...(updates.custom_analysis_data ?? {}),
-    },
+    // Override the spread with the properly merged value (or undefined if empty)
+    custom_analysis_data: hasCAD ? mergedCAD : undefined,
   }
+
   await kv.set(`mc:call-meta:${call_id}`, merged)
   if (!existing) {
     await prependId('mc:call-ids', call_id)
