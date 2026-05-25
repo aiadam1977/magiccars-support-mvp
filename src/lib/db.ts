@@ -241,6 +241,14 @@ export async function getAllCases(): Promise<ServiceCase[]> {
   return cases.filter((c): c is ServiceCase => c !== null)
 }
 
+export async function deleteCase(case_id: string): Promise<boolean> {
+  const existing = await kv.get(`mc:case:${case_id}`)
+  if (!existing) return false
+  await kv.del(`mc:case:${case_id}`)
+  await removeId('mc:case-ids', case_id)
+  return true
+}
+
 export type CaseEditableFields = Pick<
   ServiceCase,
   'caller_name' | 'caller_phone' | 'caller_email' | 'vehicle' | 'issue_description' | 'escalation_reason' | 'status'

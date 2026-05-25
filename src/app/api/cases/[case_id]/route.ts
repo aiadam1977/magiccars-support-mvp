@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCase, getCallMeta, updateCase, type CaseEditableFields } from '@/lib/db'
+import { getCase, getCallMeta, updateCase, deleteCase, type CaseEditableFields } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -97,5 +97,22 @@ export async function PATCH(
       { success: false, error: 'Failed to update case.' },
       { status: 500 }
     )
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { case_id: string } }
+) {
+  try {
+    const { case_id } = params
+    const deleted = await deleteCase(case_id)
+    if (!deleted) {
+      return NextResponse.json({ success: false, error: 'Case not found.' }, { status: 404 })
+    }
+    return NextResponse.json({ success: true, case_id })
+  } catch (err) {
+    console.error('[DELETE /api/cases/:case_id] Error:', err)
+    return NextResponse.json({ success: false, error: 'Failed to delete case.' }, { status: 500 })
   }
 }
