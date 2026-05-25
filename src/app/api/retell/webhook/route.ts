@@ -161,10 +161,28 @@ export async function POST(req: NextRequest) {
       const meta = await upsertCallMeta(call.call_id, metaUpdate)
       console.info(`[webhook] call_ended stored fields: ${Object.keys(meta).join(', ')}`)
 
+      // Also push the fresh meta onto any matching case so recording + transcript
+      // are immediately visible without waiting for call_analyzed.
+      let matched = false
+      const allCases = await getAllCases()
+      const matchedCase = allCases.find(c => c.call_id === call.call_id)
+      if (matchedCase) {
+        const existing = await getCase(matchedCase.case_id)
+        if (existing) {
+          await kv.set(`mc:case:${matchedCase.case_id}`, {
+            ...existing,
+            call_metadata: meta,
+            updated_at: new Date().toISOString(),
+          })
+          matched = true
+        }
+      }
+
       return NextResponse.json({
         success: true,
         event: 'call_ended',
         call_id: call.call_id,
+        matched_case: matched ? matchedCase?.case_id : null,
         fields_stored: Object.keys(meta).filter(k => k !== 'call_id' && k !== 'stored_at'),
       })
     }

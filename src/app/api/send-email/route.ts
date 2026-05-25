@@ -12,29 +12,30 @@ import { substituteVariables, sendEmail, TemplateVars } from '@/lib/email'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { case_id, template_id, override_email } = body as {
+    const {
+      case_id,
+      template_id,
+      override_email,
+      // When the caller edits the email in the modal before sending, the
+      // frontend passes the final composed subject + body directly so we
+      // skip template substitution and send exactly what they typed.
+      final_subject,
+      final_body,
+    } = body as {
       case_id: string
-      template_id: string
+      template_id?: string
       override_email?: string
+      final_subject?: string
+      final_body?: string
     }
 
-    if (!case_id || !template_id) {
-      return NextResponse.json(
-        { success: false, error: 'case_id and template_id are required.' },
-        { status: 400 }
-      )
+    if (!case_id) {
+      return NextResponse.json({ success: false, error: 'case_id is required.' }, { status: 400 })
     }
 
-    const [serviceCase, template] = await Promise.all([
-      getCase(case_id),
-      getTemplate(template_id),
-    ])
-
+    const serviceCase = await getCase(case_id)
     if (!serviceCase) {
       return NextResponse.json({ success: false, error: 'Case not found.' }, { status: 404 })
-    }
-    if (!template) {
-      return NextResponse.json({ success: false, error: 'Template not found.' }, { status: 404 })
     }
 
     const toEmail = override_email || serviceCase.caller_email
@@ -45,19 +46,40 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const vars: TemplateVars = {
-      caller_name: serviceCase.caller_name,
-      caller_phone: serviceCase.caller_phone,
-      caller_email: toEmail,
-      case_id: serviceCase.case_id,
-      vehicle: serviceCase.vehicle,
-      issue_description: serviceCase.issue_description,
-      recommended_route: serviceCase.recommended_route,
-      analysis_summary: serviceCase.analysis?.service_case_summary || serviceCase.analysis_summary,
-    }
+    let subject: string
+    let emailBody: string
 
-    const subject = substituteVariables(template.subject, vars)
-    const emailBody = substituteVariables(template.body, vars)
+    if (final_subject !== undefined && final_body !== undefined) {
+      // Use the caller-edited content directly — no further substitution
+      subject = final_subject
+      emailBody = final_body
+    } else {
+      // Fall back to template-based substitution
+      if (!template_id) {
+        return NextResponse.json(
+          { success: false, error: 'Either template_id or final_subject + final_body are required.' },
+          { status: 400 }
+        )
+      }
+      const template = await getTemplate(template_id)
+      if (!template) {
+        return NextResponse.json({ success: false, error: 'Template not found.' }, { status: 404 })
+      }
+
+      const vars: TemplateVars = {
+        caller_name: serviceCase.caller_name,
+        caller_phone: serviceCase.caller_phone,
+        caller_email: toEmail,
+        case_id: serviceCase.case_id,
+        vehicle: serviceCase.vehicle,
+        issue_description: serviceCase.issue_description,
+        recommended_route: serviceCase.recommended_route,
+        analysis_summary: serviceCase.analysis?.service_case_summary || serviceCase.analysis_summary,
+      }
+
+      subject = substituteVariables(template.subject, vars)
+      emailBody = substituteVariables(template.body, vars)
+    }
 
     const result = await sendEmail(toEmail, subject, emailBody)
 

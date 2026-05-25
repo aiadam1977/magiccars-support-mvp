@@ -18,9 +18,12 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Case not found.' }, { status: 404 })
     }
 
-    // Enrich with call-meta if not already attached (handles older cases created before webhook merge)
+    // Always fetch the freshest call-meta from KV rather than relying on the
+    // snapshot stored on the case.  The case's call_metadata can be stale if
+    // it was written by call_analyzed before call_ended had a chance to store
+    // the recording URL and transcript.
     let enriched = serviceCase
-    if (serviceCase.call_id && !serviceCase.call_metadata) {
+    if (serviceCase.call_id) {
       const meta = await getCallMeta(serviceCase.call_id)
       if (meta) {
         enriched = { ...serviceCase, call_metadata: meta }
