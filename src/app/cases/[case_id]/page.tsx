@@ -308,42 +308,48 @@ function CallRecordingPanel({ meta }: { meta: CallMetadata }) {
         </div>
       )}
 
-      {/* Post-call analysis data */}
-      {meta.custom_analysis_data && Object.keys(meta.custom_analysis_data).length > 0 && (
-        <div className="card">
-          <Section title="Post-Call Analysis">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {[
-                { key: 'issue_category', label: 'Issue Category' },
-                { key: 'vehicle_model', label: 'Vehicle' },
-                { key: 'recommended_route', label: 'Route' },
-                { key: 'caller_satisfaction', label: 'Caller Satisfaction' },
-                { key: 'visual_diagnostic_used', label: 'Visual Diagnostic' },
-                { key: 'follow_up_required', label: 'Follow-Up Required' },
-                { key: 'service_case_created', label: 'Case Created' },
-                { key: 'caller_email', label: 'Caller Email' },
-                { key: 'session_id', label: 'Session ID' },
-                { key: 'case_id', label: 'Case ID' },
-              ].map(({ key, label }) => {
-                const val = meta.custom_analysis_data?.[key]
-                if (!val) return null
-                return (
+      {/* Post-call analysis data — renders ALL fields Retell sends, dynamically */}
+      {meta.custom_analysis_data && Object.keys(meta.custom_analysis_data).length > 0 && (() => {
+        const CAD_LABELS: Record<string, string> = {
+          issue_category:        'Issue Category',
+          vehicle_model:         'Vehicle Model',
+          recommended_route:     'Recommended Route',
+          resolution_provided:   'Resolution Provided',
+          service_case_created:  'Case Created',
+          visual_diagnostic_used:'Visual Diagnostic',
+          caller_satisfaction:   'Caller Satisfaction',
+          follow_up_required:    'Follow-Up Required',
+          caller_email:          'Caller Email',
+          caller_name:           'Caller Name',
+          order_number:          'Order Number',
+          session_id:            'Session ID',
+          case_id:               'Case ID',
+        }
+        const LONG = new Set(['resolution_provided'])
+        const label = (k: string) => CAD_LABELS[k] ?? k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        const shortEntries = Object.entries(meta.custom_analysis_data!).filter(([k, v]) => v && !LONG.has(k))
+        const longEntries  = Object.entries(meta.custom_analysis_data!).filter(([k, v]) => v && LONG.has(k))
+        return (
+          <div className="card">
+            <Section title="Post-Call Data">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {shortEntries.map(([key, val]) => (
                   <div key={key} className="bg-slate-50 rounded-lg px-3 py-2.5">
-                    <p className="text-xs text-slate-400 mb-0.5">{label}</p>
+                    <p className="text-xs text-slate-400 mb-0.5">{label(key)}</p>
                     <p className="text-xs font-medium text-slate-700 capitalize break-all">{val.replace(/_/g, ' ')}</p>
                   </div>
-                )
-              })}
-            </div>
-            {meta.custom_analysis_data.resolution_provided && (
-              <div className="mt-3 bg-slate-50 rounded-lg px-3 py-2.5">
-                <p className="text-xs text-slate-400 mb-1">Resolution Provided</p>
-                <p className="text-xs text-slate-700 leading-relaxed">{meta.custom_analysis_data.resolution_provided}</p>
+                ))}
               </div>
-            )}
-          </Section>
-        </div>
-      )}
+              {longEntries.map(([key, val]) => (
+                <div key={key} className="mt-3 bg-slate-50 rounded-lg px-3 py-2.5">
+                  <p className="text-xs text-slate-400 mb-1">{label(key)}</p>
+                  <p className="text-xs text-slate-700 leading-relaxed">{val}</p>
+                </div>
+              ))}
+            </Section>
+          </div>
+        )
+      })()}
 
       {/* Dynamic variables */}
       {dynVars.length > 0 && (

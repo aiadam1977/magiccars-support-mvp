@@ -27,19 +27,8 @@ interface UnifiedRecord {
   call_summary?: string
   call_completion_rating?: string
   call_successful?: boolean
-  custom_analysis_data?: {
-    issue_category?: string
-    vehicle_model?: string
-    recommended_route?: string
-    resolution_provided?: string
-    service_case_created?: string
-    visual_diagnostic_used?: string
-    caller_satisfaction?: string
-    follow_up_required?: string
-    caller_email?: string
-    session_id?: string
-    case_id?: string
-  }
+  /** All post-call analysis fields from Retell — open-ended so new fields appear automatically */
+  custom_analysis_data?: Record<string, string>
   analysis?: {
     likely_issue?: string
     confidence_level?: string
@@ -102,6 +91,33 @@ const SENTIMENT_COLOR: Record<string, string> = {
   Neutral:  'text-slate-500',
   Negative: 'text-red-500',
   Unknown:  'text-slate-400',
+}
+
+// ─── Post-call field labels ───────────────────────────────────────────────────
+// Known keys get a clean label; any unknown key Retell starts sending will be
+// humanised automatically (snake_case → Title Case).
+
+const CAD_LABELS: Record<string, string> = {
+  issue_category:        'Issue Category',
+  vehicle_model:         'Vehicle Model',
+  recommended_route:     'Recommended Route',
+  resolution_provided:   'Resolution Provided',
+  service_case_created:  'Case Created',
+  visual_diagnostic_used:'Visual Diagnostic',
+  caller_satisfaction:   'Caller Satisfaction',
+  follow_up_required:    'Follow-Up Required',
+  caller_email:          'Caller Email',
+  caller_name:           'Caller Name',
+  order_number:          'Order Number',
+  session_id:            'Session ID',
+  case_id:               'Case ID',
+}
+
+/** Long-form fields rendered as paragraphs rather than chips */
+const CAD_LONG_FIELDS = new Set(['resolution_provided'])
+
+function cadLabel(key: string): string {
+  return CAD_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -356,10 +372,7 @@ function ExpandedPanel({
 
       {/* ── Action bar ── */}
       <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={onEmail}
-          className="btn-primary text-xs flex items-center gap-1.5"
-        >
+        <button onClick={onEmail} className="btn-primary text-xs flex items-center gap-1.5">
           ✉ Send Email to Caller
         </button>
         {!hasEmail && (
@@ -372,7 +385,7 @@ function ExpandedPanel({
         )}
       </div>
 
-      {/* ── Top grid ── */}
+      {/* ── Top grid: Call Details | Post-Call Data (2-col) | Case Info ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         {/* Call details */}
@@ -399,55 +412,67 @@ function ExpandedPanel({
           )}
         </div>
 
-        {/* Post-call analysis */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2.5">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Post-Call Analysis</p>
-          {cad?.issue_category && <DetailField label="Issue Category"><span className="capitalize">{cad.issue_category}</span></DetailField>}
-          {(cad?.vehicle_model || record.vehicle) && <DetailField label="Vehicle">{cad?.vehicle_model || record.vehicle}</DetailField>}
-          {record.recommended_route && (
-            <DetailField label="Route">
-              <Badge
-                label={ROUTE_LABEL[record.recommended_route] ?? record.recommended_route}
-                color={ROUTE_COLOR[record.recommended_route] ?? 'bg-gray-100 text-gray-600'}
-              />
-            </DetailField>
-          )}
-          {record.user_sentiment && (
-            <DetailField label="Sentiment">
-              <span className={`font-medium ${SENTIMENT_COLOR[record.user_sentiment] ?? ''}`}>
-                {record.user_sentiment}
-              </span>
-            </DetailField>
-          )}
-          {cad?.caller_satisfaction && <DetailField label="Satisfaction"><span className="capitalize">{cad.caller_satisfaction}</span></DetailField>}
-          {cad?.visual_diagnostic_used && <DetailField label="Visual Diagnostic"><span className="capitalize">{cad.visual_diagnostic_used.replace(/_/g, ' ')}</span></DetailField>}
-          {!cad?.issue_category && !record.recommended_route && !record.user_sentiment && (
-            <p className="text-xs text-slate-300 italic">Awaiting post-call analysis</p>
-          )}
-        </div>
+        {/* Post-call data — fully dynamic, renders every field Retell sends */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:col-span-1 lg:col-span-2">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Post-Call Data</p>
 
-        {/* Outcomes */}
-        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2.5">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Outcomes</p>
-          {cad?.service_case_created && (
-            <DetailField label="Case Created">
-              <span className={cad.service_case_created === 'yes' ? 'text-green-600 font-medium' : 'text-slate-400'}>
-                {cad.service_case_created === 'yes' ? 'Yes' : 'No'}
-              </span>
-            </DetailField>
-          )}
-          {cad?.follow_up_required && (
-            <DetailField label="Follow-Up">
-              <span className={cad.follow_up_required === 'yes' ? 'text-red-500 font-medium' : 'text-slate-400'}>
-                {cad.follow_up_required === 'yes' ? 'Required' : 'Not required'}
-              </span>
-            </DetailField>
-          )}
-          {cad?.caller_email && <DetailField label="Caller Email">{cad.caller_email}</DetailField>}
-          {record.caller_email && !cad?.caller_email && <DetailField label="Caller Email">{record.caller_email}</DetailField>}
-          {cad?.session_id && <DetailField label="Session ID"><span className="font-mono text-[11px]">{cad.session_id}</span></DetailField>}
-          {!cad?.service_case_created && !cad?.follow_up_required && !record.caller_email && (
-            <p className="text-xs text-slate-300 italic">No outcome data yet</p>
+          {/* Top-level call analysis fields */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3">
+            {record.call_successful !== undefined && (
+              <DetailField label="Call Successful">
+                <span className={record.call_successful ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+                  {record.call_successful ? 'Yes' : 'No'}
+                </span>
+              </DetailField>
+            )}
+            {record.user_sentiment && (
+              <DetailField label="User Sentiment">
+                <span className={`font-medium ${SENTIMENT_COLOR[record.user_sentiment] ?? ''}`}>
+                  {record.user_sentiment}
+                </span>
+              </DetailField>
+            )}
+            {record.call_completion_rating && (
+              <DetailField label="Completion Rating">{record.call_completion_rating}</DetailField>
+            )}
+
+            {/* Every custom_analysis_data field — short values as chips */}
+            {cad && Object.entries(cad)
+              .filter(([key, val]) => val && val.trim() && !CAD_LONG_FIELDS.has(key))
+              .map(([key, val]) => (
+                <DetailField key={key} label={cadLabel(key)}>
+                  {key === 'recommended_route' ? (
+                    <Badge
+                      label={ROUTE_LABEL[val] ?? val}
+                      color={ROUTE_COLOR[val] ?? 'bg-gray-100 text-gray-600'}
+                    />
+                  ) : key === 'follow_up_required' || key === 'service_case_created' ? (
+                    <span className={val === 'yes' ? (key === 'follow_up_required' ? 'text-red-500 font-medium' : 'text-green-600 font-medium') : 'text-slate-400'}>
+                      {val === 'yes' ? 'Yes' : 'No'}
+                    </span>
+                  ) : key === 'session_id' || key === 'case_id' ? (
+                    <span className="font-mono text-[11px] break-all">{val}</span>
+                  ) : (
+                    <span className="capitalize">{val.replace(/_/g, ' ')}</span>
+                  )}
+                </DetailField>
+              ))
+            }
+          </div>
+
+          {/* Long-form fields rendered as paragraphs */}
+          {cad && Object.entries(cad)
+            .filter(([key, val]) => val && val.trim() && CAD_LONG_FIELDS.has(key))
+            .map(([key, val]) => (
+              <div key={key} className="border-t border-slate-50 pt-2.5 mt-2.5">
+                <p className="text-xs text-slate-400 mb-1">{cadLabel(key)}</p>
+                <p className="text-xs text-slate-700 leading-relaxed">{val}</p>
+              </div>
+            ))
+          }
+
+          {!record.call_successful && !record.user_sentiment && (!cad || Object.keys(cad).length === 0) && (
+            <p className="text-xs text-slate-300 italic">Awaiting post-call analysis from Retell</p>
           )}
         </div>
 
