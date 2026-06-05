@@ -85,25 +85,34 @@ interface RetellWebhookPayload {
   call: RetellCallObject
 }
 
-// ─── Signature verification (optional but recommended) ────────────────────────
+// ─── Signature verification ────────────────────────────────────────────────────
 
-// async function verifySignature(req: NextRequest, rawBody: string): Promise<boolean> {
-//   const secret = process.env.RETELL_WEBHOOK_SECRET
-//   if (!secret) return true // skip verification if not configured
-//   const signature = req.headers.get('x-retell-signature') ?? ''
-//   const encoder = new TextEncoder()
-//   const key = await crypto.subtle.importKey(
-//     'raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-//   )
-//   const sigBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody))
-//   const expected = Buffer.from(sigBuffer).toString('hex')
-//   return signature === expected
-// }
+async function verifySignature(signature: string, rawBody: string): Promise<boolean> {
+  const secret = process.env.RETELL_WEBHOOK_SECRET
+  if (!secret) return true // skip if not configured
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    )
+    const sigBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody))
+    const bytes = new Uint8Array(sigBuffer)
+    let hex = ''; for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0')
+    return signature === hex
+  } catch { return false }
+}
 
 export async function POST(req: NextRequest) {
   let rawBody = ''
   try {
     rawBody = await req.text()
+
+    // Verify Retell signature if secret is configured
+    const sig = req.headers.get('x-retell-signature') ?? ''
+    if (!(await verifySignature(sig, rawBody))) {
+      console.warn('[webhook] Signature verification failed')
+      return NextResponse.json({ success: false, error: 'Invalid signature.' }, { status: 401 })
+    }
     const payload = JSON.parse(rawBody) as RetellWebhookPayload
 
     const call = payload.call

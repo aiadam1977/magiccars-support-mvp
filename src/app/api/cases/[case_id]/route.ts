@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCase, getCallMeta, updateCase, deleteCase, addCaseActivity, type CaseEditableFields } from '@/lib/db'
+import { getCase, getCallMeta, updateCase, deleteCase, addCaseActivity, addCaseNote, type CaseEditableFields } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -60,6 +60,8 @@ const EDITABLE_KEYS: (keyof CaseEditableFields)[] = [
   'issue_description',
   'escalation_reason',
   'status',
+  'priority',
+  'assigned_to',
 ]
 
 export async function PATCH(
@@ -109,7 +111,12 @@ export async function PATCH(
       })
     }
 
-    // Re-fetch so the response includes the new activity entry
+    // Handle note addition (separate from field updates)
+    if (typeof body.add_note === 'string' && body.add_note.trim()) {
+      await addCaseNote(case_id, body.add_note as string)
+    }
+
+    // Re-fetch so the response includes the new activity + notes
     const fresh = await getCase(case_id)
     return NextResponse.json({ success: true, case: fresh ?? updated })
   } catch (err) {

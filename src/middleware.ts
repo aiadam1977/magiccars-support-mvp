@@ -18,7 +18,9 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith('/api/retell/') ||
     pathname.startsWith('/upload/') ||
     pathname.startsWith('/api/upload/') ||
-    pathname.startsWith('/api/media/')
+    pathname.startsWith('/api/media/') ||
+    pathname.startsWith('/track/') ||        // customer-facing case tracking
+    pathname.startsWith('/api/track/')        // public case status API
   )
 }
 

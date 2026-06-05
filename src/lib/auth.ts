@@ -18,10 +18,16 @@ export { COOKIE_NAME }
 
 // ─── Credentials ─────────────────────────────────────────────────────────────
 
+/**
+ * Master admin account — always available regardless of the users KV table.
+ * Set ADMIN_EMAIL / ADMIN_PASSWORD env vars to override the defaults.
+ */
 export function getAdminCredentials() {
   return {
     email:    process.env.ADMIN_EMAIL    ?? 'info@mymagiccars.com',
     password: process.env.ADMIN_PASSWORD ?? 'Tuna2026',
+    name:     'Admin',
+    role:     'admin' as const,
   }
 }
 

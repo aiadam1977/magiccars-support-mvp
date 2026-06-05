@@ -93,6 +93,12 @@ export interface CallMetadata {
   stored_at: string
 }
 
+export interface CaseNote {
+  id: string
+  text: string
+  timestamp: string
+}
+
 export interface CaseActivity {
   /** Short unique ID for this entry */
   id: string
@@ -124,6 +130,12 @@ export interface ServiceCase {
   status: 'open' | 'assigned' | 'resolved'
   /** Chronological log of significant events on this case */
   activity?: CaseActivity[]
+  /** Internal notes added by the support team */
+  notes?: CaseNote[]
+  /** Case priority set by the team */
+  priority?: 'urgent' | 'normal' | 'low'
+  /** Which team member this case is assigned to */
+  assigned_to?: string
   created_at: string
   updated_at: string
 }
@@ -144,6 +156,50 @@ export interface EmailTemplate {
   body: string
   created_at: string
   updated_at: string
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export interface AppUser {
+  user_id: string
+  email: string
+  name: string
+  role: 'admin' | 'agent'
+  /** bcrypt or plain hash — for MVP we store a salted hash */
+  password_hash: string
+  created_at: string
+}
+
+export async function getUserByEmail(email: string): Promise<AppUser | null> {
+  return await kv.get<AppUser>(`mc:user:${email.toLowerCase()}`)
+}
+
+export async function getAllUsers(): Promise<AppUser[]> {
+  const raw = await kv.get('mc:user-ids')
+  const ids: string[] = Array.isArray(raw) ? raw : []
+  if (ids.length === 0) return []
+  const users = await Promise.all(ids.map(id => kv.get<AppUser>(`mc:user:${id}`)))
+  return users.filter((u): u is AppUser => u !== null)
+}
+
+export async function createUser(user: AppUser): Promise<AppUser> {
+  await kv.set(`mc:user:${user.email.toLowerCase()}`, user)
+  await prependId('mc:user-ids', user.email.toLowerCase())
+  return user
+}
+
+export async function deleteUser(email: string): Promise<boolean> {
+  const existing = await kv.get(`mc:user:${email.toLowerCase()}`)
+  if (!existing) return false
+  await kv.del(`mc:user:${email.toLowerCase()}`)
+  await removeId('mc:user-ids', email.toLowerCase())
+  return true
+}
+
+export async function updateUserPassword(email: string, password_hash: string): Promise<void> {
+  const existing = await kv.get<AppUser>(`mc:user:${email.toLowerCase()}`)
+  if (!existing) return
+  await kv.set(`mc:user:${email.toLowerCase()}`, { ...existing, password_hash })
 }
 
 // ─── Call phone cache ────────────────────────────────────────────────────────
@@ -264,7 +320,7 @@ export async function deleteCase(case_id: string): Promise<boolean> {
 
 export type CaseEditableFields = Pick<
   ServiceCase,
-  'caller_name' | 'caller_phone' | 'caller_email' | 'vehicle' | 'issue_description' | 'escalation_reason' | 'status'
+  'caller_name' | 'caller_phone' | 'caller_email' | 'vehicle' | 'issue_description' | 'escalation_reason' | 'status' | 'priority' | 'assigned_to'
 >
 
 export async function updateCase(
@@ -392,6 +448,18 @@ export async function upsertCallMeta(
     await prependId('mc:call-ids', call_id)
   }
   return merged
+}
+
+export async function addCaseNote(case_id: string, text: string): Promise<CaseNote | null> {
+  const existing = await kv.get<ServiceCase>(`mc:case:${case_id}`)
+  if (!existing) return null
+  const note: CaseNote = { id: `note-${Date.now().toString(36)}`, text: text.trim(), timestamp: new Date().toISOString() }
+  await kv.set(`mc:case:${case_id}`, {
+    ...existing,
+    notes: [...(existing.notes ?? []), note],
+    updated_at: new Date().toISOString(),
+  })
+  return note
 }
 
 export async function getCallMeta(call_id: string): Promise<CallMetadata | null> {

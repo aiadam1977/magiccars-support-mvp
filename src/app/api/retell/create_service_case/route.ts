@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import { createCase, getSession, ServiceCase, type CaseActivity } from '@/lib/db'
+import { notifySlackNewCase } from '@/lib/slack'
 
 export async function POST(req: NextRequest) {
   try {
@@ -68,11 +69,45 @@ export async function POST(req: NextRequest) {
 
     await createCase(serviceCase)
 
+    // Fire-and-forget Slack notification (doesn't block the response)
+    notifySlackNewCase({
+      case_id,
+      caller_name,
+      caller_phone,
+      vehicle,
+      issue_description,
+      recommended_route,
+      is_safety: recommended_route === 'safety_stop',
+      case_url,
+    }).catch(() => {/* silent */})
+
+    // Build customer-facing tracking URL
+    const tracking_url = `${base_url}/track/${case_id}`
+
+    // SMS the tracking link to the caller if we have their phone number
+    if (caller_phone) {
+      try {
+        const accountSid = process.env.TWILIO_ACCOUNT_SID
+        const authToken  = process.env.TWILIO_AUTH_TOKEN
+        const fromNumber = process.env.TWILIO_PHONE_NUMBER
+        if (accountSid && authToken && fromNumber) {
+          const body = `MagicCars: Your support case ${case_id} has been created. Track your status here: ${tracking_url}`
+          const creds = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+          await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+            method: 'POST',
+            headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ To: caller_phone, From: fromNumber, Body: body }),
+          })
+        }
+      } catch { /* non-blocking */ }
+    }
+
     return NextResponse.json({
       success: true,
       case_id,
       case_url,
-      message: `Support case ${case_id} created successfully. The case includes the visual evidence and AI analysis summary.`,
+      tracking_url,
+      message: `Support case ${case_id} created successfully. Tracking link sent to caller.`,
     })
   } catch (err) {
     console.error('[create_service_case] Error:', err)

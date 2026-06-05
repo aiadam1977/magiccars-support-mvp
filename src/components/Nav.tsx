@@ -7,9 +7,11 @@ export default function Nav() {
   const router = useRouter()
 
   const links = [
-    { href: '/demo', label: 'Demo Simulator' },
+    { href: '/', label: 'Dashboard' },
     { href: '/cases', label: 'All Activity' },
     { href: '/templates', label: 'Email Templates' },
+    { href: '/team', label: 'Team' },
+    { href: '/demo', label: 'Demo' },
   ]
 
   async function handleLogout() {
