@@ -45,6 +45,13 @@ interface UnifiedRecord {
     confidence_level?: string
     escalation_required?: boolean
   }
+  activity?: Array<{
+    id: string
+    type: 'case_created' | 'status_changed' | 'email_sent'
+    timestamp: string
+    label: string
+    detail?: string
+  }>
   created_at: string
   stored_at: string
 }
@@ -528,6 +535,43 @@ function ExpandedPanel({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Activity timeline ── */}
+      {record.activity && record.activity.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">Activity</p>
+          <div className="relative">
+            {/* Vertical line */}
+            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-100" />
+            <div className="space-y-4">
+              {record.activity.map(entry => {
+                const dotColor =
+                  entry.type === 'case_created' ? 'bg-blue-400' :
+                  entry.type === 'email_sent'   ? 'bg-purple-400' :
+                  entry.type === 'status_changed' ? 'bg-green-400' :
+                  'bg-slate-300'
+                return (
+                  <div key={entry.id} className="flex items-start gap-3 pl-1">
+                    <div className={`mt-1 w-3.5 h-3.5 rounded-full flex-shrink-0 ${dotColor} ring-2 ring-white`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-slate-700">{entry.label}</p>
+                      {entry.detail && (
+                        <p className="text-xs text-slate-400 mt-0.5 truncate">{entry.detail}</p>
+                      )}
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        {new Date(entry.timestamp).toLocaleString('en-US', {
+                          month: 'short', day: 'numeric', year: 'numeric',
+                          hour: 'numeric', minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 

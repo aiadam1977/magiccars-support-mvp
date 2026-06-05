@@ -36,6 +36,14 @@ interface CallMetadata {
   stored_at: string
 }
 
+interface CaseActivity {
+  id: string
+  type: 'case_created' | 'status_changed' | 'email_sent'
+  timestamp: string
+  label: string
+  detail?: string
+}
+
 interface ServiceCase {
   case_id: string
   call_id: string
@@ -56,6 +64,7 @@ interface ServiceCase {
   file_path?: string
   file_name?: string
   file_type?: string
+  activity?: CaseActivity[]
   created_at: string
   updated_at: string
 }
@@ -997,6 +1006,42 @@ export default function CaseDetailPage() {
               ) : (
                 <div className="card text-center py-8 text-slate-400 text-sm">No AI analysis attached to this case.</div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Activity timeline */}
+        {serviceCase.activity && serviceCase.activity.length > 0 && (
+          <div className="mt-6 card">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Activity</h3>
+            <div className="relative">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-100" />
+              <div className="space-y-4">
+                {serviceCase.activity.map(entry => {
+                  const dotColor =
+                    entry.type === 'case_created'   ? 'bg-blue-400' :
+                    entry.type === 'email_sent'     ? 'bg-purple-400' :
+                    entry.type === 'status_changed' ? 'bg-green-400' :
+                    'bg-slate-300'
+                  return (
+                    <div key={entry.id} className="flex items-start gap-3 pl-1">
+                      <div className={`mt-1 w-3.5 h-3.5 rounded-full flex-shrink-0 ${dotColor} ring-2 ring-white`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700">{entry.label}</p>
+                        {entry.detail && (
+                          <p className="text-xs text-slate-400 mt-0.5">{entry.detail}</p>
+                        )}
+                        <p className="text-xs text-slate-300 mt-0.5">
+                          {new Date(entry.timestamp).toLocaleString('en-US', {
+                            month: 'short', day: 'numeric', year: 'numeric',
+                            hour: 'numeric', minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         )}

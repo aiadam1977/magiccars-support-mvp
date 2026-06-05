@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCase, getTemplate } from '@/lib/db'
+import { getCase, getTemplate, addCaseActivity } from '@/lib/db'
 import { substituteVariables, sendEmail, TemplateVars } from '@/lib/email'
 
 export async function POST(req: NextRequest) {
@@ -48,6 +48,14 @@ export async function POST(req: NextRequest) {
         )
       }
       const result = await sendEmail(toEmail, final_subject, final_body)
+      if (result.success && case_id) {
+        await addCaseActivity(case_id, {
+          type: 'email_sent',
+          timestamp: new Date().toISOString(),
+          label: `Email sent to ${toEmail}`,
+          detail: final_subject,
+        })
+      }
       return NextResponse.json({ success: result.success, message: result.message, provider: result.provider, to: toEmail, subject: final_subject })
     }
 
@@ -92,6 +100,14 @@ export async function POST(req: NextRequest) {
       const subject = substituteVariables(template.subject, vars)
       const emailBody = substituteVariables(template.body, vars)
       const result = await sendEmail(toEmail, subject, emailBody)
+      if (result.success) {
+        await addCaseActivity(case_id, {
+          type: 'email_sent',
+          timestamp: new Date().toISOString(),
+          label: `Email sent to ${toEmail}`,
+          detail: subject,
+        })
+      }
       return NextResponse.json({ success: result.success, message: result.message, provider: result.provider, to: toEmail, subject })
     }
 

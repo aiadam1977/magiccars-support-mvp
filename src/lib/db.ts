@@ -93,6 +93,17 @@ export interface CallMetadata {
   stored_at: string
 }
 
+export interface CaseActivity {
+  /** Short unique ID for this entry */
+  id: string
+  type: 'case_created' | 'status_changed' | 'email_sent'
+  timestamp: string
+  /** Primary label shown in the timeline */
+  label: string
+  /** Optional secondary detail (e.g. email subject, old→new status) */
+  detail?: string
+}
+
 export interface ServiceCase {
   case_id: string
   call_id: string
@@ -111,6 +122,8 @@ export interface ServiceCase {
   file_name?: string
   file_type?: string
   status: 'open' | 'assigned' | 'resolved'
+  /** Chronological log of significant events on this case */
+  activity?: CaseActivity[]
   created_at: string
   updated_at: string
 }
@@ -267,6 +280,27 @@ export async function updateCase(
   }
   await kv.set(`mc:case:${case_id}`, updated)
   return updated
+}
+
+/**
+ * Append a single activity entry to a case's audit log.
+ * Safe to call even if the case doesn't exist (no-op).
+ */
+export async function addCaseActivity(
+  case_id: string,
+  entry: Omit<CaseActivity, 'id'>
+): Promise<void> {
+  const existing = await kv.get<ServiceCase>(`mc:case:${case_id}`)
+  if (!existing) return
+  const activityEntry: CaseActivity = {
+    ...entry,
+    id: `act-${Date.now().toString(36)}`,
+  }
+  await kv.set(`mc:case:${case_id}`, {
+    ...existing,
+    activity: [...(existing.activity ?? []), activityEntry],
+    updated_at: new Date().toISOString(),
+  })
 }
 
 // ─── Email Templates ──────────────────────────────────────────────────────────

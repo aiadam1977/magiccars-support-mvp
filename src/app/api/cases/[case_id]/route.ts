@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getCase, getCallMeta, updateCase, deleteCase, type CaseEditableFields } from '@/lib/db'
+import { getCase, getCallMeta, updateCase, deleteCase, addCaseActivity, type CaseEditableFields } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
@@ -85,12 +85,31 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
     }
 
+    // Capture old status before update (for activity log)
+    const existing = await getCase(case_id)
+    const oldStatus = existing?.status
+
     const updated = await updateCase(case_id, updates)
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Case not found.' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, case: updated })
+    // Log status changes to the activity timeline
+    if (updates.status && updates.status !== oldStatus) {
+      const STATUS_LABEL: Record<string, string> = {
+        open: 'Open', assigned: 'Assigned', resolved: 'Resolved',
+      }
+      await addCaseActivity(case_id, {
+        type: 'status_changed',
+        timestamp: new Date().toISOString(),
+        label: `Status changed to ${STATUS_LABEL[updates.status] ?? updates.status}`,
+        detail: oldStatus ? `was ${STATUS_LABEL[oldStatus] ?? oldStatus}` : undefined,
+      })
+    }
+
+    // Re-fetch so the response includes the new activity entry
+    const fresh = await getCase(case_id)
+    return NextResponse.json({ success: true, case: fresh ?? updated })
   } catch (err) {
     console.error('[PATCH /api/cases/:case_id] Error:', err)
     return NextResponse.json(

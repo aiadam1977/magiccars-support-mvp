@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
-import { createCase, getSession, ServiceCase } from '@/lib/db'
+import { createCase, getSession, ServiceCase, type CaseActivity } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +36,14 @@ export async function POST(req: NextRequest) {
     // Pull analysis and media from session if available
     const session = session_id ? await getSession(session_id) : null
 
+    const initialActivity: CaseActivity = {
+      id: `act-${Date.now().toString(36)}`,
+      type: 'case_created',
+      timestamp: now,
+      label: 'Case opened',
+      detail: recommended_route !== 'human_support' ? recommended_route.replace(/_/g, ' ') : undefined,
+    }
+
     const serviceCase: ServiceCase = {
       case_id,
       call_id,
@@ -53,6 +61,7 @@ export async function POST(req: NextRequest) {
       file_name: session?.file_name,
       file_type: session?.file_type,
       status: 'open',
+      activity: [initialActivity],
       created_at: now,
       updated_at: now,
     }

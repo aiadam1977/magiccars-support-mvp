@@ -53,6 +53,9 @@ export async function GET(_req: NextRequest) {
           escalation_reason: matchedCase?.escalation_reason,
           analysis: matchedCase?.analysis,
 
+          // Case activity log
+          activity: matchedCase?.activity,
+
           // Resolution
           recommended_route:
             matchedCase?.recommended_route ||
@@ -95,6 +98,7 @@ export async function GET(_req: NextRequest) {
         analysis: c.analysis,
         recommended_route: c.recommended_route,
         status: c.status,
+        activity: c.activity,
         recording_url: c.call_metadata?.recording_url,
         transcript: c.call_metadata?.transcript,
         duration_ms: c.call_metadata?.duration_ms,
