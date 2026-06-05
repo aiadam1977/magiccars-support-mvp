@@ -4,23 +4,29 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
-interface ServiceCase {
-  case_id: string
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface UnifiedRecord {
   call_id: string
+  case_id?: string
+  has_case: boolean
   caller_name: string
   caller_phone: string
   caller_email?: string
-  vehicle: string
-  issue_description: string
-  recommended_route: string
-  escalation_reason: string
-  status: string
-  created_at: string
   from_number?: string
+  vehicle?: string
+  issue_description?: string
+  escalation_reason?: string
+  recommended_route?: string
+  status?: string
+  recording_url?: string
+  transcript?: string
+  duration_ms?: number
+  start_timestamp?: number
+  user_sentiment?: string
   call_summary?: string
   call_completion_rating?: string
-  user_sentiment?: string
-  recording_url?: string
+  call_successful?: boolean
   custom_analysis_data?: {
     issue_category?: string
     vehicle_model?: string
@@ -35,11 +41,15 @@ interface ServiceCase {
     case_id?: string
   }
   analysis?: {
-    likely_issue: string
-    confidence_level: string
-    escalation_required: boolean
+    likely_issue?: string
+    confidence_level?: string
+    escalation_required?: boolean
   }
+  created_at: string
+  stored_at: string
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROUTE_LABEL: Record<string, string> = {
   self_fix: 'Self-Fix',
@@ -61,104 +71,352 @@ const ROUTE_COLOR: Record<string, string> = {
   not_determined: 'bg-slate-100 text-slate-500',
 }
 
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  open:     { label: 'Open',     color: 'bg-yellow-100 text-yellow-700' },
+  assigned: { label: 'Assigned', color: 'bg-blue-100 text-blue-700' },
+  resolved: { label: 'Resolved', color: 'bg-green-100 text-green-700' },
+}
+
 const SENTIMENT_COLOR: Record<string, string> = {
   Positive: 'text-green-600',
-  Neutral: 'text-slate-500',
+  Neutral:  'text-slate-500',
   Negative: 'text-red-500',
-  Unknown: 'text-slate-400',
+  Unknown:  'text-slate-400',
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  open: 'bg-yellow-100 text-yellow-700',
-  assigned: 'bg-blue-100 text-blue-700',
-  resolved: 'bg-green-100 text-green-700',
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
+function formatDate(iso?: string | number) {
+  if (!iso) return '—'
+  return new Date(typeof iso === 'number' ? iso : iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
   })
 }
 
+function formatDuration(ms?: number) {
+  if (!ms) return '—'
+  const s = Math.round(ms / 1000)
+  const m = Math.floor(s / 60)
+  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
+}
+
 function formatPhone(phone?: string) {
-  if (!phone) return ''
-  const digits = phone.replace(/\D/g, '')
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
-  }
+  if (!phone) return '—'
+  const d = phone.replace(/\D/g, '')
+  if (d.length === 11 && d.startsWith('1')) return `+1 (${d.slice(1,4)}) ${d.slice(4,7)}-${d.slice(7)}`
   return phone
 }
 
-/** Build a single searchable string from all case fields */
-function caseSearchText(c: ServiceCase): string {
-  const cad = c.custom_analysis_data
+function recordSearchText(r: UnifiedRecord): string {
+  const cad = r.custom_analysis_data
   return [
-    c.case_id,
-    c.caller_name,
-    c.caller_phone,
-    c.caller_email,
-    formatPhone(c.from_number || c.caller_phone),
-    c.vehicle,
-    c.issue_description,
-    c.escalation_reason,
-    c.recommended_route,
-    ROUTE_LABEL[c.recommended_route] ?? '',
-    c.status,
-    formatDate(c.created_at),
-    c.call_summary,
-    c.user_sentiment,
-    cad?.issue_category,
-    cad?.vehicle_model,
-    cad?.recommended_route,
-    cad?.caller_satisfaction,
-    cad?.follow_up_required,
-    cad?.caller_email,
-    cad?.resolution_provided,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
+    r.call_id, r.case_id,
+    r.caller_name, r.caller_phone, r.caller_email,
+    formatPhone(r.from_number || r.caller_phone),
+    r.vehicle,
+    r.issue_description, r.escalation_reason,
+    r.recommended_route, ROUTE_LABEL[r.recommended_route ?? ''] ?? '',
+    r.status,
+    r.user_sentiment,
+    r.call_summary,
+    formatDate(r.created_at),
+    cad?.issue_category, cad?.vehicle_model,
+    cad?.caller_satisfaction, cad?.follow_up_required,
+    cad?.caller_email, cad?.resolution_provided,
+  ].filter(Boolean).join(' ').toLowerCase()
 }
 
-export default function CasesPage() {
-  const [cases, setCases] = useState<ServiceCase[]>([])
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Badge({ label, color }: { label: string; color: string }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>
+      {label}
+    </span>
+  )
+}
+
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-400 mb-0.5">{label}</p>
+      <div className="text-xs font-medium text-slate-700">{children}</div>
+    </div>
+  )
+}
+
+interface ExpandedPanelProps {
+  record: UnifiedRecord
+  onStatusChange: (caseId: string, status: string) => Promise<void>
+  statusSaving: boolean
+  onDelete: (caseId: string) => Promise<void>
+  deleting: boolean
+  confirmDelete: boolean
+  onConfirmDelete: () => void
+  onCancelDelete: () => void
+}
+
+function ExpandedPanel({
+  record, onStatusChange, statusSaving,
+  onDelete, deleting, confirmDelete, onConfirmDelete, onCancelDelete,
+}: ExpandedPanelProps) {
+  const [showTranscript, setShowTranscript] = useState(false)
+  const cad = record.custom_analysis_data
+  const isSafety = record.recommended_route === 'safety_stop'
+
+  return (
+    <div className={`border-t px-5 py-5 space-y-5 ${isSafety ? 'bg-red-50/40 border-red-200' : 'bg-slate-50/60 border-gray-100'}`}>
+
+      {/* ── Top grid ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        {/* Call details */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2.5">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Call Details</p>
+          <DetailField label="Call ID"><span className="font-mono text-[11px]">{record.call_id || '—'}</span></DetailField>
+          <DetailField label="Date">{formatDate(record.start_timestamp || record.created_at)}</DetailField>
+          <DetailField label="Duration">{formatDuration(record.duration_ms)}</DetailField>
+          <DetailField label="Phone">{formatPhone(record.from_number || record.caller_phone)}</DetailField>
+          {record.call_successful !== undefined && (
+            <DetailField label="Call Successful">
+              <span className={record.call_successful ? 'text-green-600' : 'text-red-500'}>
+                {record.call_successful ? 'Yes' : 'No'}
+              </span>
+            </DetailField>
+          )}
+          {record.call_completion_rating && (
+            <DetailField label="Completion">{record.call_completion_rating}</DetailField>
+          )}
+          {record.recording_url && (
+            <DetailField label="Recording">
+              <audio controls src={record.recording_url} className="w-full mt-1" preload="metadata" />
+            </DetailField>
+          )}
+        </div>
+
+        {/* Post-call analysis */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2.5">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Post-Call Analysis</p>
+          {cad?.issue_category && <DetailField label="Issue Category"><span className="capitalize">{cad.issue_category}</span></DetailField>}
+          {(cad?.vehicle_model || record.vehicle) && <DetailField label="Vehicle">{cad?.vehicle_model || record.vehicle}</DetailField>}
+          {record.recommended_route && (
+            <DetailField label="Route">
+              <Badge
+                label={ROUTE_LABEL[record.recommended_route] ?? record.recommended_route}
+                color={ROUTE_COLOR[record.recommended_route] ?? 'bg-gray-100 text-gray-600'}
+              />
+            </DetailField>
+          )}
+          {record.user_sentiment && (
+            <DetailField label="Sentiment">
+              <span className={`font-medium ${SENTIMENT_COLOR[record.user_sentiment] ?? ''}`}>
+                {record.user_sentiment}
+              </span>
+            </DetailField>
+          )}
+          {cad?.caller_satisfaction && <DetailField label="Satisfaction"><span className="capitalize">{cad.caller_satisfaction}</span></DetailField>}
+          {cad?.visual_diagnostic_used && <DetailField label="Visual Diagnostic"><span className="capitalize">{cad.visual_diagnostic_used.replace(/_/g, ' ')}</span></DetailField>}
+          {!cad?.issue_category && !record.recommended_route && !record.user_sentiment && (
+            <p className="text-xs text-slate-300 italic">Awaiting post-call analysis</p>
+          )}
+        </div>
+
+        {/* Outcomes */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2.5">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Outcomes</p>
+          {cad?.service_case_created && (
+            <DetailField label="Case Created">
+              <span className={cad.service_case_created === 'yes' ? 'text-green-600 font-medium' : 'text-slate-400'}>
+                {cad.service_case_created === 'yes' ? 'Yes' : 'No'}
+              </span>
+            </DetailField>
+          )}
+          {cad?.follow_up_required && (
+            <DetailField label="Follow-Up">
+              <span className={cad.follow_up_required === 'yes' ? 'text-red-500 font-medium' : 'text-slate-400'}>
+                {cad.follow_up_required === 'yes' ? 'Required' : 'Not required'}
+              </span>
+            </DetailField>
+          )}
+          {cad?.caller_email && <DetailField label="Caller Email">{cad.caller_email}</DetailField>}
+          {record.caller_email && !cad?.caller_email && <DetailField label="Caller Email">{record.caller_email}</DetailField>}
+          {cad?.session_id && <DetailField label="Session ID"><span className="font-mono text-[11px]">{cad.session_id}</span></DetailField>}
+          {!cad?.service_case_created && !cad?.follow_up_required && !record.caller_email && (
+            <p className="text-xs text-slate-300 italic">No outcome data yet</p>
+          )}
+        </div>
+
+        {/* Case info */}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2.5">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Case Info</p>
+          {record.has_case && record.case_id ? (
+            <>
+              <DetailField label="Case ID">
+                <Link href={`/cases/${record.case_id}`} className="font-mono text-[11px] text-[#E31837] hover:underline">
+                  {record.case_id}
+                </Link>
+              </DetailField>
+              {record.vehicle && <DetailField label="Vehicle">{record.vehicle}</DetailField>}
+              {record.status && (
+                <DetailField label="Status">
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {(['open', 'assigned', 'resolved'] as const).map(s => (
+                      <button
+                        key={s}
+                        disabled={statusSaving}
+                        onClick={() => onStatusChange(record.case_id!, s)}
+                        className={`px-2 py-0.5 rounded text-xs font-semibold border transition-all ${
+                          s === record.status
+                            ? STATUS_CONFIG[s].color + ' border-transparent ring-1 ring-offset-0'
+                            : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
+                        } ${statusSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {STATUS_CONFIG[s].label}
+                      </button>
+                    ))}
+                  </div>
+                </DetailField>
+              )}
+              <div className="pt-2 flex flex-col gap-1.5">
+                <Link href={`/cases/${record.case_id}`} className="text-xs text-[#E31837] hover:underline font-medium">
+                  Open full case →
+                </Link>
+                {confirmDelete ? (
+                  <span className="inline-flex items-center gap-1.5 mt-1">
+                    <span className="text-xs text-slate-500">Delete case?</span>
+                    <button onClick={() => onDelete(record.case_id!)} disabled={deleting} className="px-2 py-0.5 rounded text-xs font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                      {deleting ? '…' : 'Yes'}
+                    </button>
+                    <button onClick={onCancelDelete} className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Cancel</button>
+                  </span>
+                ) : (
+                  <button onClick={onConfirmDelete} className="text-xs text-slate-400 hover:text-red-500 text-left">
+                    Delete case
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-slate-400 italic">No service case created for this call.</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Full-width rows ── */}
+      {(record.call_summary || cad?.resolution_provided || record.issue_description) && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {record.issue_description && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Issue Reported</p>
+              <p className="text-sm text-slate-700 leading-relaxed">{record.issue_description}</p>
+              {record.escalation_reason && (
+                <p className="text-xs text-slate-500 mt-2 italic">{record.escalation_reason}</p>
+              )}
+            </div>
+          )}
+          {(record.call_summary || cad?.resolution_provided) && (
+            <div className="space-y-3">
+              {record.call_summary && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Call Summary</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{record.call_summary}</p>
+                </div>
+              )}
+              {cad?.resolution_provided && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Resolution Documented</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{cad.resolution_provided}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Transcript ── */}
+      {record.transcript && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Transcript</p>
+            <button onClick={() => setShowTranscript(s => !s)} className="text-xs text-[#E31837] hover:underline font-medium">
+              {showTranscript ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+          {showTranscript ? (
+            <div className="max-h-64 overflow-y-auto">
+              <pre className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed font-sans">{record.transcript}</pre>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic line-clamp-2">{record.transcript.slice(0, 200)}…</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function ActivityPage() {
+  const [records, setRecords] = useState<UnifiedRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [statusSaving, setStatusSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/cases')
+    fetch('/api/records')
       .then(r => r.json())
-      .then(d => { if (d.success) setCases(d.cases) })
+      .then(d => { if (d.success) setRecords(d.records) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return cases
-    return cases.filter(c => caseSearchText(c).includes(q))
-  }, [cases, query])
+    if (!q) return records
+    return records.filter(r => recordSearchText(r).includes(q))
+  }, [records, query])
 
-  const safetyCount = cases.filter(c => c.recommended_route === 'safety_stop').length
-
-  async function handleDelete(case_id: string) {
-    setDeleting(case_id)
+  async function handleStatusChange(caseId: string, newStatus: string) {
+    const record = records.find(r => r.case_id === caseId)
+    if (!record || record.status === newStatus) return
+    setStatusSaving(true)
     try {
-      const res = await fetch(`/api/cases/${case_id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
       const d = await res.json()
       if (d.success) {
-        setCases(prev => prev.filter(c => c.case_id !== case_id))
-        setConfirmDelete(null)
+        setRecords(prev => prev.map(r => r.case_id === caseId ? { ...r, status: newStatus } : r))
       }
-    } catch { /* silently fail — row stays */ }
+    } catch { /* silent */ }
+    finally { setStatusSaving(false) }
+  }
+
+  async function handleDelete(caseId: string) {
+    setDeleting(caseId)
+    try {
+      const res = await fetch(`/api/cases/${caseId}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (d.success) {
+        setRecords(prev => prev.map(r =>
+          r.case_id === caseId ? { ...r, has_case: false, case_id: undefined, status: undefined } : r
+        ))
+        setConfirmDelete(null)
+        setExpanded(null)
+      }
+    } catch { /* silent */ }
     finally { setDeleting(null) }
   }
+
+  const totalCases = records.filter(r => r.has_case).length
+  const safetyCount = records.filter(r => r.recommended_route === 'safety_stop').length
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -168,15 +426,14 @@ export default function CasesPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-[#E31837]">Support Cases</h1>
+            <h1 className="text-2xl font-bold text-[#E31837]">All Activity</h1>
             <p className="text-slate-500 text-sm mt-1">
-              {cases.length} case{cases.length !== 1 ? 's' : ''} total
-              {query && filtered.length !== cases.length && (
-                <span className="ml-2 text-slate-400">· {filtered.length} matching</span>
-              )}
+              {records.length} call{records.length !== 1 ? 's' : ''}
+              {totalCases > 0 && <span className="ml-2 text-slate-400">· {totalCases} case{totalCases !== 1 ? 's' : ''}</span>}
+              {query && filtered.length !== records.length && <span className="ml-2 text-slate-400">· {filtered.length} matching</span>}
               {safetyCount > 0 && (
                 <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-600 text-white">
-                  {safetyCount} safety escalation{safetyCount !== 1 ? 's' : ''}
+                  {safetyCount} safety
                 </span>
               )}
             </p>
@@ -184,7 +441,7 @@ export default function CasesPage() {
           <Link href="/demo" className="btn-primary text-sm">+ New Demo Session</Link>
         </div>
 
-        {/* Search bar */}
+        {/* Search */}
         <div className="mb-4 relative">
           <span className="absolute inset-y-0 left-3 flex items-center text-slate-400 pointer-events-none">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -196,175 +453,127 @@ export default function CasesPage() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search by name, phone, vehicle, issue, date, status…"
-            className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]"
+            className="w-full pl-9 pr-9 py-2.5 border border-slate-200 rounded-xl text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]"
           />
           {query && (
-            <button
-              onClick={() => setQuery('')}
-              className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600 text-lg leading-none"
-            >
-              ×
-            </button>
+            <button onClick={() => setQuery('')} className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
           )}
         </div>
 
-        {loading && (
-          <div className="text-center py-16 text-slate-400">Loading cases...</div>
-        )}
+        {loading && <div className="text-center py-16 text-slate-400">Loading…</div>}
 
-        {!loading && cases.length === 0 && (
+        {!loading && records.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm text-center py-16">
-            <div className="text-4xl mb-3">📋</div>
-            <h2 className="text-lg font-semibold text-slate-600 mb-2">No Cases Yet</h2>
-            <p className="text-slate-400 text-sm mb-5">Cases are created when Harold escalates an issue during a call.</p>
+            <div className="text-4xl mb-3">📞</div>
+            <h2 className="text-lg font-semibold text-slate-600 mb-2">No Activity Yet</h2>
+            <p className="text-slate-400 text-sm mb-5">Calls will appear here as soon as Harold receives his first inbound call.</p>
             <Link href="/demo" className="btn-primary text-sm">Go to Demo Simulator</Link>
           </div>
         )}
 
-        {!loading && cases.length > 0 && filtered.length === 0 && (
+        {!loading && records.length > 0 && filtered.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm text-center py-16">
             <div className="text-3xl mb-3">🔍</div>
             <h2 className="text-lg font-semibold text-slate-600 mb-2">No matches for &ldquo;{query}&rdquo;</h2>
-            <p className="text-slate-400 text-sm mb-4">Try a name, phone number, vehicle, issue type, date, or status.</p>
+            <p className="text-slate-400 text-sm mb-4">Try a name, phone number, vehicle, date, or status.</p>
             <button onClick={() => setQuery('')} className="btn-secondary text-sm">Clear search</button>
           </div>
         )}
 
         {!loading && filtered.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-gray-100 shadow-sm bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-gray-100">
-                <tr>
-                  {[
-                    'Case ID', 'Caller', 'Phone', 'Vehicle',
-                    'Issue Category', 'Route', 'Sentiment',
-                    'Satisfaction', 'Follow-Up', 'Status', 'Created', '',
-                  ].map((h, i) => (
-                    <th
-                      key={i}
-                      className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filtered.map(c => {
-                  const cad = c.custom_analysis_data
-                  const isSafety = c.recommended_route === 'safety_stop'
-                  const route = cad?.recommended_route || c.recommended_route
-                  const isConfirming = confirmDelete === c.case_id
-                  const isDeleting = deleting === c.case_id
+          <div className="space-y-2">
+            {filtered.map(record => {
+              const key = record.call_id || record.case_id || record.stored_at
+              const isOpen = expanded === key
+              const cad = record.custom_analysis_data
+              const isSafety = record.recommended_route === 'safety_stop'
+              const route = record.recommended_route
 
-                  return (
-                    <tr
-                      key={c.case_id}
-                      className={`hover:bg-slate-50 transition-colors ${isSafety ? 'bg-red-50' : ''} ${isConfirming ? 'bg-red-50' : ''}`}
-                    >
-                      {/* Case ID */}
-                      <td className="px-4 py-3 font-mono text-xs text-[#E31837] whitespace-nowrap">
-                        <Link href={`/cases/${c.case_id}`} className="hover:underline font-semibold">
-                          {c.case_id}
-                        </Link>
-                      </td>
+              return (
+                <div
+                  key={key}
+                  className={`bg-white rounded-xl border shadow-sm overflow-hidden transition-all ${isSafety ? 'border-red-300' : 'border-gray-100'}`}
+                >
+                  {/* Summary row */}
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : key)}
+                    className="w-full text-left px-5 py-4 flex flex-wrap items-center gap-x-5 gap-y-2 hover:bg-slate-50 transition-colors"
+                  >
+                    {/* Caller */}
+                    <div className="min-w-[140px]">
+                      <div className="font-semibold text-slate-800 text-sm">{record.caller_name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{formatPhone(record.from_number || record.caller_phone)}</div>
+                    </div>
 
-                      {/* Caller */}
-                      <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
-                        {c.caller_name}
-                      </td>
+                    {/* Date */}
+                    <div className="text-xs text-slate-400 min-w-[120px]">
+                      {formatDate(record.start_timestamp || record.created_at)}
+                    </div>
 
-                      {/* Phone */}
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap text-xs">
-                        {formatPhone(c.from_number || c.caller_phone) || '—'}
-                      </td>
+                    {/* Duration */}
+                    <div className="text-xs text-slate-500 w-14">{formatDuration(record.duration_ms)}</div>
 
-                      {/* Vehicle */}
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap max-w-[160px] truncate text-xs">
-                        {c.vehicle}
-                      </td>
+                    {/* Vehicle */}
+                    {(cad?.vehicle_model || record.vehicle) && (
+                      <div className="text-xs text-slate-500 italic max-w-[140px] truncate">
+                        {cad?.vehicle_model || record.vehicle}
+                      </div>
+                    )}
 
-                      {/* Issue category */}
-                      <td className="px-4 py-3 text-slate-600 capitalize whitespace-nowrap text-xs">
-                        {cad?.issue_category ?? '—'}
-                      </td>
+                    {/* Issue category */}
+                    {cad?.issue_category && (
+                      <div className="text-xs text-slate-600 capitalize font-medium">{cad.issue_category}</div>
+                    )}
 
-                      {/* Route */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ROUTE_COLOR[route] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {ROUTE_LABEL[route] ?? route}
-                        </span>
-                      </td>
+                    {/* Route */}
+                    {route && (
+                      <Badge
+                        label={ROUTE_LABEL[route] ?? route}
+                        color={ROUTE_COLOR[route] ?? 'bg-gray-100 text-gray-600'}
+                      />
+                    )}
 
-                      {/* Sentiment */}
-                      <td className="px-4 py-3 whitespace-nowrap text-xs">
-                        {c.user_sentiment
-                          ? <span className={`font-medium ${SENTIMENT_COLOR[c.user_sentiment] ?? 'text-slate-400'}`}>{c.user_sentiment}</span>
-                          : '—'}
-                      </td>
+                    {/* Sentiment */}
+                    {record.user_sentiment && (
+                      <span className={`text-xs font-medium ${SENTIMENT_COLOR[record.user_sentiment] ?? 'text-slate-400'}`}>
+                        {record.user_sentiment}
+                      </span>
+                    )}
 
-                      {/* Satisfaction */}
-                      <td className="px-4 py-3 whitespace-nowrap text-xs capitalize text-slate-500">
-                        {cad?.caller_satisfaction ?? '—'}
-                      </td>
+                    {/* Status / Case badge */}
+                    {record.has_case && record.status ? (
+                      <Badge
+                        label={STATUS_CONFIG[record.status]?.label ?? record.status}
+                        color={STATUS_CONFIG[record.status]?.color ?? 'bg-slate-100 text-slate-500'}
+                      />
+                    ) : (
+                      <span className="text-xs text-slate-300">No case</span>
+                    )}
 
-                      {/* Follow-up */}
-                      <td className="px-4 py-3 whitespace-nowrap text-xs">
-                        {cad?.follow_up_required
-                          ? <span className={cad.follow_up_required === 'yes' ? 'text-red-500 font-medium' : 'text-slate-400'}>
-                              {cad.follow_up_required === 'yes' ? 'Yes' : 'No'}
-                            </span>
-                          : '—'}
-                      </td>
+                    {/* Case ID */}
+                    {record.case_id && (
+                      <span className="text-xs font-mono text-slate-400 hidden lg:inline">{record.case_id}</span>
+                    )}
 
-                      {/* Status */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[c.status] ?? 'bg-slate-100 text-slate-500'}`}>
-                          {c.status}
-                        </span>
-                      </td>
+                    <div className="ml-auto text-slate-300 text-xs">{isOpen ? '▲' : '▼'}</div>
+                  </button>
 
-                      {/* Created */}
-                      <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
-                        {formatDate(c.created_at)}
-                      </td>
-
-                      {/* Delete */}
-                      <td className="px-3 py-3 whitespace-nowrap text-right">
-                        {isConfirming ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="text-xs text-slate-500 mr-0.5">Delete?</span>
-                            <button
-                              onClick={() => handleDelete(c.case_id)}
-                              disabled={isDeleting}
-                              className="px-2 py-1 rounded text-xs font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-                            >
-                              {isDeleting ? '…' : 'Yes'}
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="px-2 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200"
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDelete(c.case_id)}
-                            title="Delete case"
-                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  {/* Expanded panel */}
+                  {isOpen && (
+                    <ExpandedPanel
+                      record={record}
+                      onStatusChange={handleStatusChange}
+                      statusSaving={statusSaving}
+                      onDelete={handleDelete}
+                      deleting={deleting === record.case_id}
+                      confirmDelete={confirmDelete === record.case_id}
+                      onConfirmDelete={() => setConfirmDelete(record.case_id!)}
+                      onCancelDelete={() => setConfirmDelete(null)}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
