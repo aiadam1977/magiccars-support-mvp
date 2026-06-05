@@ -42,22 +42,32 @@ Return ONLY a valid JSON object with exactly these fields:
 }`
 
 /**
- * Run visual AI analysis on an uploaded file.
- * fileUrl is either a Vercel Blob public URL (https://...) or empty string for demo mode.
+ * Run visual AI analysis on one or more uploaded files.
+ * When multiple fileUrls are provided, all images are passed to GPT-4o in a
+ * single request so the model can reason across all views at once.
+ * Falls back to deterministic demo analysis when OpenAI is not configured or
+ * when all files are videos.
  */
 export async function runAnalysis(params: {
-  fileUrl: string
+  fileUrl: string         // primary file (kept for backward compat)
   fileType: string
   issueType: string
   issueDescription: string
   note?: string
+  // Optional additional files from multi-upload
+  additionalFileUrls?: Array<{ url: string; type: string }>
 }): Promise<AnalysisResult> {
-  const { fileUrl, fileType, issueType, issueDescription, note } = params
+  const { fileUrl, fileType, issueType, issueDescription, note, additionalFileUrls } = params
 
-  // Try OpenAI if key is set and file is an image
-  if (process.env.OPENAI_API_KEY && isImage(fileType) && fileUrl.startsWith('https://')) {
+  // Collect all image URLs (skip videos — GPT-4o vision only handles images)
+  const imageEntries = [
+    ...(isImage(fileType) && fileUrl.startsWith('https://') ? [{ url: fileUrl, type: fileType }] : []),
+    ...(additionalFileUrls ?? []).filter(f => isImage(f.type) && f.url.startsWith('https://')),
+  ]
+
+  if (process.env.OPENAI_API_KEY && imageEntries.length > 0) {
     try {
-      return await runOpenAIAnalysis({ fileUrl, fileType, issueType, issueDescription, note })
+      return await runOpenAIAnalysis({ images: imageEntries, issueType, issueDescription, note })
     } catch (err) {
       console.error('[Analysis] OpenAI vision failed, falling back to demo:', err)
     }
@@ -71,9 +81,20 @@ function isImage(fileType: string): boolean {
   return fileType.startsWith('image/')
 }
 
+async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string }> {
+  const headers: Record<string, string> = {}
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    headers['Authorization'] = `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`
+  }
+  const response = await fetch(url, { headers })
+  if (!response.ok) throw new Error(`Failed to fetch image from blob: ${response.status}`)
+  const arrayBuffer = await response.arrayBuffer()
+  const contentType = response.headers.get('content-type') || 'image/jpeg'
+  return { base64: Buffer.from(arrayBuffer).toString('base64'), mimeType: contentType.split(';')[0] }
+}
+
 async function runOpenAIAnalysis(params: {
-  fileUrl: string
-  fileType: string
+  images: Array<{ url: string; type: string }>
   issueType: string
   issueDescription: string
   note?: string
@@ -81,18 +102,10 @@ async function runOpenAIAnalysis(params: {
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-  // Fetch image from Vercel Blob URL (private blob requires token)
-  const fetchHeaders: Record<string, string> = {}
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    fetchHeaders['Authorization'] = `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`
-  }
-  const response = await fetch(params.fileUrl, { headers: fetchHeaders })
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image from blob: ${response.status}`)
-  }
-  const arrayBuffer = await response.arrayBuffer()
-  const base64 = Buffer.from(arrayBuffer).toString('base64')
-  const mimeType = params.fileType || 'image/jpeg'
+  // Fetch all images in parallel
+  const imageData = await Promise.all(
+    params.images.map(img => fetchImageAsBase64(img.url))
+  )
 
   const prompt = VISION_PROMPT
     .replace('{{KNOWLEDGE_BASE}}', getKnowledgeBasePrompt())
@@ -100,7 +113,20 @@ async function runOpenAIAnalysis(params: {
     .replace('{{ISSUE_DESCRIPTION}}', params.issueDescription)
     .replace('{{NOTE}}', params.note || 'None provided')
 
+  // Add a note about multiple images if more than one
+  const imageCountNote = imageData.length > 1
+    ? `\n\nNOTE: The caller has provided ${imageData.length} photos. Analyze all of them together to get the most complete picture of the issue.`
+    : ''
+
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+
+  type ImageUrlContent = { type: 'image_url'; image_url: { url: string; detail: 'high' | 'low' | 'auto' } }
+  type TextContent = { type: 'text'; text: string }
+
+  const imageContent: ImageUrlContent[] = imageData.map(({ base64, mimeType }) => ({
+    type: 'image_url' as const,
+    image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' as const },
+  }))
 
   const completion = await client.chat.completions.create({
     model,
@@ -108,24 +134,19 @@ async function runOpenAIAnalysis(params: {
       {
         role: 'user',
         content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' },
-          },
+          { type: 'text', text: prompt + imageCountNote } as TextContent,
+          ...imageContent,
         ],
       },
     ],
-    max_tokens: 1200,
+    max_tokens: 1400,
   })
 
   const content = completion.choices[0]?.message?.content || ''
-  // Extract JSON from the response
   const jsonMatch = content.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('No JSON in OpenAI response')
 
-  const parsed = JSON.parse(jsonMatch[0]) as AnalysisResult
-  return sanitizeAnalysis(parsed)
+  return sanitizeAnalysis(JSON.parse(jsonMatch[0]) as AnalysisResult)
 }
 
 /**
