@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 /**
  * GET    /api/templates/[template_id]  — Fetch one template
  * PUT    /api/templates/[template_id]  — Update a template

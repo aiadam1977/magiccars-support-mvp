@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 /**
  * GET  /api/cases/:case_id  — Fetch a single case with call-meta enrichment.
  * PATCH /api/cases/:case_id  — Update editable fields (caller info, vehicle, issue, status).

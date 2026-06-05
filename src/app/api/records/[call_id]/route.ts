@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 /**
  * DELETE /api/records/:call_id
  *

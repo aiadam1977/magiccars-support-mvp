@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 /**
  * GET  /api/templates  — List all email templates
  * POST /api/templates  — Create a new email template
