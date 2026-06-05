@@ -187,9 +187,10 @@ function DetailField({ label, children }: { label: string; children: React.React
 interface SendEmailModalProps {
   record: UnifiedRecord
   onClose: () => void
+  onSent?: () => void
 }
 
-function SendEmailModal({ record, onClose }: SendEmailModalProps) {
+function SendEmailModal({ record, onClose, onSent }: SendEmailModalProps) {
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [selectedId, setSelectedId] = useState('')
   const [toEmail, setToEmail] = useState(
@@ -257,7 +258,7 @@ function SendEmailModal({ record, onClose }: SendEmailModalProps) {
         }),
       })
       const d = await res.json()
-      if (d.success) { setSent(true); setSentSubject(editSubject) }
+      if (d.success) { setSent(true); setSentSubject(editSubject); onSent?.() }
       else setError(d.error || 'Failed to send email.')
     } catch { setError('Network error — please try again.') }
     finally { setSending(false) }
@@ -648,6 +649,14 @@ export default function ActivityPage() {
     return records.filter(r => recordSearchText(r).includes(q))
   }, [records, query])
 
+  async function refreshRecords() {
+    try {
+      const res = await fetch('/api/records')
+      const d = await res.json()
+      if (d.success) setRecords(d.records)
+    } catch { /* silent */ }
+  }
+
   async function handleStatusChange(caseId: string, newStatus: string) {
     const record = records.find(r => r.case_id === caseId)
     if (!record || record.status === newStatus) return
@@ -660,7 +669,12 @@ export default function ActivityPage() {
       })
       const d = await res.json()
       if (d.success) {
-        setRecords(prev => prev.map(r => r.case_id === caseId ? { ...r, status: newStatus } : r))
+        // Update status + activity from the fresh case the API returns
+        setRecords(prev => prev.map(r =>
+          r.case_id === caseId
+            ? { ...r, status: newStatus, activity: d.case?.activity ?? r.activity }
+            : r
+        ))
       }
     } catch { /* silent */ }
     finally { setStatusSaving(false) }
@@ -689,7 +703,11 @@ export default function ActivityPage() {
     <div className="min-h-screen bg-slate-50">
       <Nav />
       {emailRecord && (
-        <SendEmailModal record={emailRecord} onClose={() => setEmailRecord(null)} />
+        <SendEmailModal
+          record={emailRecord}
+          onClose={() => setEmailRecord(null)}
+          onSent={refreshRecords}
+        />
       )}
       <div className="max-w-7xl mx-auto px-4 py-8">
 
