@@ -398,6 +398,14 @@ export async function getCallMeta(call_id: string): Promise<CallMetadata | null>
   return await kv.get<CallMetadata>(`mc:call-meta:${call_id}`)
 }
 
+export async function deleteCallMeta(call_id: string): Promise<boolean> {
+  const existing = await kv.get(`mc:call-meta:${call_id}`)
+  if (!existing) return false
+  await kv.del(`mc:call-meta:${call_id}`)
+  await removeId('mc:call-ids', call_id)
+  return true
+}
+
 export async function getAllCallMeta(): Promise<CallMetadata[]> {
   const raw = await kv.get('mc:call-ids')
   const ids: string[] = Array.isArray(raw) ? raw : []

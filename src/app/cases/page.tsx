@@ -350,7 +350,7 @@ interface ExpandedPanelProps {
   record: UnifiedRecord
   onStatusChange: (caseId: string, status: string) => Promise<void>
   statusSaving: boolean
-  onDelete: (caseId: string) => Promise<void>
+  onDelete: (callId: string, caseId?: string) => Promise<void>
   deleting: boolean
   confirmDelete: boolean
   onConfirmDelete: () => void
@@ -376,14 +376,41 @@ function ExpandedPanel({
         <button onClick={onEmail} className="btn-primary text-xs flex items-center gap-1.5">
           ✉ Send Email to Caller
         </button>
-        {!hasEmail && (
-          <span className="text-xs text-slate-400">No email on file — you can enter one in the modal</span>
-        )}
         {record.case_id && (
           <Link href={`/cases/${record.case_id}`} className="btn-secondary text-xs">
             Open Full Case →
           </Link>
         )}
+        <div className="ml-auto">
+          {confirmDelete ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="text-xs text-slate-500">Delete this record?</span>
+              <button
+                onClick={() => onDelete(record.call_id, record.case_id)}
+                disabled={deleting}
+                className="px-2.5 py-1 rounded text-xs font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? '…' : 'Yes, delete'}
+              </button>
+              <button
+                onClick={onCancelDelete}
+                className="px-2.5 py-1 rounded text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={onConfirmDelete}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete record
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Top grid: Call Details | Post-Call Data (2-col) | Case Info ── */}
@@ -508,23 +535,10 @@ function ExpandedPanel({
                   </div>
                 </DetailField>
               )}
-              <div className="pt-2 flex flex-col gap-1.5">
+              <div className="pt-2">
                 <Link href={`/cases/${record.case_id}`} className="text-xs text-[#E31837] hover:underline font-medium">
                   Open full case →
                 </Link>
-                {confirmDelete ? (
-                  <span className="inline-flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-slate-500">Delete case?</span>
-                    <button onClick={() => onDelete(record.case_id!)} disabled={deleting} className="px-2 py-0.5 rounded text-xs font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
-                      {deleting ? '…' : 'Yes'}
-                    </button>
-                    <button onClick={onCancelDelete} className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">Cancel</button>
-                  </span>
-                ) : (
-                  <button onClick={onConfirmDelete} className="text-xs text-slate-400 hover:text-red-500 text-left">
-                    Delete case
-                  </button>
-                )}
               </div>
             </>
           ) : (
@@ -680,15 +694,15 @@ export default function ActivityPage() {
     finally { setStatusSaving(false) }
   }
 
-  async function handleDelete(caseId: string) {
-    setDeleting(caseId)
+  async function handleDelete(callId: string, caseId?: string) {
+    setDeleting(callId)
     try {
-      const res = await fetch(`/api/cases/${caseId}`, { method: 'DELETE' })
+      const url = `/api/records/${encodeURIComponent(callId)}${caseId ? `?case_id=${encodeURIComponent(caseId)}` : ''}`
+      const res = await fetch(url, { method: 'DELETE' })
       const d = await res.json()
       if (d.success) {
-        setRecords(prev => prev.map(r =>
-          r.case_id === caseId ? { ...r, has_case: false, case_id: undefined, status: undefined } : r
-        ))
+        // Remove the record entirely from the list
+        setRecords(prev => prev.filter(r => r.call_id !== callId))
         setConfirmDelete(null)
         setExpanded(null)
       }
@@ -853,9 +867,9 @@ export default function ActivityPage() {
                       onStatusChange={handleStatusChange}
                       statusSaving={statusSaving}
                       onDelete={handleDelete}
-                      deleting={deleting === record.case_id}
-                      confirmDelete={confirmDelete === record.case_id}
-                      onConfirmDelete={() => setConfirmDelete(record.case_id!)}
+                      deleting={deleting === key}
+                      confirmDelete={confirmDelete === key}
+                      onConfirmDelete={() => setConfirmDelete(key)}
                       onCancelDelete={() => setConfirmDelete(null)}
                       onEmail={() => setEmailRecord(record)}
                     />
