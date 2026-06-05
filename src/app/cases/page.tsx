@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
@@ -47,6 +47,19 @@ interface UnifiedRecord {
   }
   created_at: string
   stored_at: string
+}
+
+interface EmailTemplate {
+  template_id: string
+  name: string
+  subject: string
+  body: string
+}
+
+function previewBody(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key: string) =>
+    vars[key] !== undefined ? vars[key] : match
+  )
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -146,6 +159,169 @@ function DetailField({ label, children }: { label: string; children: React.React
   )
 }
 
+// ─── Send Email Modal ─────────────────────────────────────────────────────────
+
+interface SendEmailModalProps {
+  record: UnifiedRecord
+  onClose: () => void
+}
+
+function SendEmailModal({ record, onClose }: SendEmailModalProps) {
+  const [templates, setTemplates] = useState<EmailTemplate[]>([])
+  const [selectedId, setSelectedId] = useState('')
+  const [toEmail, setToEmail] = useState(
+    record.caller_email || record.custom_analysis_data?.caller_email || ''
+  )
+  const [editSubject, setEditSubject] = useState('')
+  const [editBody, setEditBody] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [sentSubject, setSentSubject] = useState('')
+  const [error, setError] = useState('')
+  const [loadingTemplates, setLoadingTemplates] = useState(true)
+
+  const caseVars: Record<string, string> = {
+    caller_name: record.caller_name,
+    caller_phone: record.caller_phone || record.from_number || '',
+    caller_email: toEmail,
+    case_id: record.case_id || '',
+    vehicle: record.vehicle || record.custom_analysis_data?.vehicle_model || '',
+    issue_description: record.issue_description || '',
+    recommended_route: record.recommended_route || '',
+    analysis_summary: record.call_summary || '',
+  }
+
+  const populateFromTemplate = useCallback((templateId: string, tmplList: EmailTemplate[]) => {
+    const t = tmplList.find(x => x.template_id === templateId)
+    if (!t) return
+    setEditSubject(previewBody(t.subject, caseVars))
+    setEditBody(previewBody(t.body, caseVars))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record, toEmail])
+
+  useEffect(() => {
+    fetch('/api/templates')
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && d.templates.length > 0) {
+          setTemplates(d.templates)
+          setSelectedId(d.templates[0].template_id)
+          populateFromTemplate(d.templates[0].template_id, d.templates)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingTemplates(false))
+  }, [populateFromTemplate])
+
+  function handleTemplateChange(id: string) {
+    setSelectedId(id)
+    populateFromTemplate(id, templates)
+  }
+
+  async function handleSend() {
+    if (!toEmail.trim()) { setError('An email address is required.'); return }
+    if (!editSubject.trim()) { setError('Subject cannot be empty.'); return }
+    if (!editBody.trim()) { setError('Body cannot be empty.'); return }
+    setSending(true); setError('')
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          override_email: toEmail.trim(),
+          final_subject: editSubject,
+          final_body: editBody,
+        }),
+      })
+      const d = await res.json()
+      if (d.success) { setSent(true); setSentSubject(editSubject) }
+      else setError(d.error || 'Failed to send email.')
+    } catch { setError('Network error — please try again.') }
+    finally { setSending(false) }
+  }
+
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837]'
+  const canSend = !sending && !!toEmail.trim() && !!editSubject.trim() && !!editBody.trim()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Send Email</h2>
+            <p className="text-sm text-slate-400">{record.caller_name} · {formatPhone(record.from_number || record.caller_phone)}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none p-1">×</button>
+        </div>
+
+        {sent ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="text-5xl mb-4">✅</div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Email sent!</h3>
+            <p className="text-sm text-slate-500 mb-1">Sent to: {toEmail}</p>
+            <p className="text-xs text-slate-400 italic mb-6">{sentSubject}</p>
+            <button onClick={onClose} className="btn-secondary text-sm">Close</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">To</label>
+                <input type="email" value={toEmail} onChange={e => setToEmail(e.target.value)} placeholder="caller@email.com" className={inputCls} />
+                {!record.caller_email && !record.custom_analysis_data?.caller_email && (
+                  <p className="text-xs text-amber-600 mt-1">No email captured during call — enter manually.</p>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Template</label>
+                  <Link href="/templates" target="_blank" className="text-xs text-[#E31837] hover:underline">Manage →</Link>
+                </div>
+                {loadingTemplates ? (
+                  <div className="text-sm text-slate-400">Loading...</div>
+                ) : templates.length === 0 ? (
+                  <div className="text-sm text-slate-400">No templates. <Link href="/templates" className="text-[#E31837] hover:underline">Create one →</Link></div>
+                ) : (
+                  <select value={selectedId} onChange={e => handleTemplateChange(e.target.value)} className={inputCls}>
+                    {templates.map(t => <option key={t.template_id} value={t.template_id}>{t.name}</option>)}
+                  </select>
+                )}
+              </div>
+              {(editSubject || editBody) && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Subject</label>
+                    <input type="text" value={editSubject} onChange={e => setEditSubject(e.target.value)} className={inputCls} />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Body</label>
+                      <span className="text-xs text-slate-400">Edit freely — this is what gets sent</span>
+                    </div>
+                    <textarea rows={12} value={editBody} onChange={e => setEditBody(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#E31837]/30 focus:border-[#E31837] resize-none leading-relaxed"
+                    />
+                  </div>
+                </>
+              )}
+              {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={handleSend} disabled={!canSend} className="btn-primary text-sm disabled:opacity-50">
+                {sending ? 'Sending…' : 'Send Email'}
+              </button>
+              <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Expanded Panel ───────────────────────────────────────────────────────────
+
 interface ExpandedPanelProps {
   record: UnifiedRecord
   onStatusChange: (caseId: string, status: string) => Promise<void>
@@ -155,18 +331,39 @@ interface ExpandedPanelProps {
   confirmDelete: boolean
   onConfirmDelete: () => void
   onCancelDelete: () => void
+  onEmail: () => void
 }
 
 function ExpandedPanel({
   record, onStatusChange, statusSaving,
-  onDelete, deleting, confirmDelete, onConfirmDelete, onCancelDelete,
+  onDelete, deleting, confirmDelete, onConfirmDelete, onCancelDelete, onEmail,
 }: ExpandedPanelProps) {
   const [showTranscript, setShowTranscript] = useState(false)
   const cad = record.custom_analysis_data
   const isSafety = record.recommended_route === 'safety_stop'
 
+  const hasEmail = !!(record.caller_email || record.custom_analysis_data?.caller_email)
+
   return (
     <div className={`border-t px-5 py-5 space-y-5 ${isSafety ? 'bg-red-50/40 border-red-200' : 'bg-slate-50/60 border-gray-100'}`}>
+
+      {/* ── Action bar ── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          onClick={onEmail}
+          className="btn-primary text-xs flex items-center gap-1.5"
+        >
+          ✉ Send Email to Caller
+        </button>
+        {!hasEmail && (
+          <span className="text-xs text-slate-400">No email on file — you can enter one in the modal</span>
+        )}
+        {record.case_id && (
+          <Link href={`/cases/${record.case_id}`} className="btn-secondary text-xs">
+            Open Full Case →
+          </Link>
+        )}
+      </div>
 
       {/* ── Top grid ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -366,6 +563,7 @@ export default function ActivityPage() {
   const [statusSaving, setStatusSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [emailRecord, setEmailRecord] = useState<UnifiedRecord | null>(null)
 
   useEffect(() => {
     fetch('/api/records')
@@ -421,6 +619,9 @@ export default function ActivityPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <Nav />
+      {emailRecord && (
+        <SendEmailModal record={emailRecord} onClose={() => setEmailRecord(null)} />
+      )}
       <div className="max-w-7xl mx-auto px-4 py-8">
 
         {/* Header */}
@@ -569,6 +770,7 @@ export default function ActivityPage() {
                       confirmDelete={confirmDelete === record.case_id}
                       onConfirmDelete={() => setConfirmDelete(record.case_id!)}
                       onCancelDelete={() => setConfirmDelete(null)}
+                      onEmail={() => setEmailRecord(record)}
                     />
                   )}
                 </div>
