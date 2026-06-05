@@ -1077,7 +1077,7 @@ export default function ActivityPage() {
                 Export CSV
               </button>
             )}
-            <Link href="/demo" className="btn-primary text-sm">+ New Demo</Link>
+            <Link href="/demo" className="btn-primary text-sm">+ Test Session</Link>
           </div>
         </div>
 
@@ -1175,7 +1175,7 @@ export default function ActivityPage() {
             <div className="text-4xl mb-3">📞</div>
             <h2 className="text-lg font-semibold text-slate-600 mb-2">No Activity Yet</h2>
             <p className="text-slate-400 text-sm mb-5">Calls will appear here as soon as Harold receives his first inbound call.</p>
-            <Link href="/demo" className="btn-primary text-sm">Go to Demo Simulator</Link>
+            <Link href="/demo" className="btn-primary text-sm">Test Session</Link>
           </div>
         )}
 

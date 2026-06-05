@@ -1,5 +1,5 @@
 /**
- * MagicCars Support MVP — Email Utility
+ * MagicCars Support — Email Utility
  *
  * Variable substitution and email sending via Resend.
  * Requires RESEND_API_KEY env var set in Vercel and .env.local.

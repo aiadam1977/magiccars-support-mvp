@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import Nav from '@/components/Nav'
 
-const DEMO_ISSUES = [
+const ISSUE_PRESETS = [
   {
     label: 'No Power — Vehicle Will Not Turn On',
     issue_type: 'no_power',
@@ -130,7 +130,7 @@ const ROUTE_COLOR: Record<string, string> = {
   human_support: 'bg-gray-100 text-gray-800',
 }
 
-export default function DemoPage() {
+export default function TestSessionPage() {
   const [step, setStep] = useState<Step>('form')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -139,8 +139,8 @@ export default function DemoPage() {
   const [callerName, setCallerName] = useState('Jennifer Park')
   const [callerPhone, setCallerPhone] = useState('+15125550187')
   const [selectedPreset, setSelectedPreset] = useState(6) // grinding_noise default
-  const [issueType, setIssueType] = useState(DEMO_ISSUES[6].issue_type)
-  const [issueDescription, setIssueDescription] = useState(DEMO_ISSUES[6].description)
+  const [issueType, setIssueType] = useState(ISSUE_PRESETS[6].issue_type)
+  const [issueDescription, setIssueDescription] = useState(ISSUE_PRESETS[6].description)
 
   // Results
   const [session, setSession] = useState<SessionResult | null>(null)
@@ -151,8 +151,8 @@ export default function DemoPage() {
 
   function handlePresetChange(index: number) {
     setSelectedPreset(index)
-    setIssueType(DEMO_ISSUES[index].issue_type)
-    setIssueDescription(DEMO_ISSUES[index].description)
+    setIssueType(ISSUE_PRESETS[index].issue_type)
+    setIssueDescription(ISSUE_PRESETS[index].description)
   }
 
   async function createSession() {
@@ -163,7 +163,7 @@ export default function DemoPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          call_id: `demo-call-${Date.now()}`,
+          call_id: `test-call-${Date.now()}`,
           caller_phone: callerPhone,
           caller_name: callerName,
           vehicle_id: 'magiccars-12v-2wd-jeep',
@@ -234,7 +234,7 @@ export default function DemoPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          call_id: `demo-call-${Date.now()}`,
+          call_id: `test-call-${Date.now()}`,
           session_id: session.session_id,
           caller_name: callerName,
           caller_phone: callerPhone,
@@ -277,9 +277,9 @@ export default function DemoPage() {
 
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#E31837]">MagicCars Support — Demo Simulator</h1>
+          <h1 className="text-2xl font-bold text-[#E31837]">MagicCars Support — Test Session</h1>
           <p className="text-slate-500 mt-1">
-            Simulate the full AI support call flow for Magic Cars 12V 2WD Ride-On Jeep.
+            Run the full AI support call flow for Magic Cars 12V 2WD Ride-On Jeep.
           </p>
         </div>
 
@@ -299,7 +299,7 @@ export default function DemoPage() {
               Step 1 — Parent Info &amp; Issue
             </h2>
             <p className="text-sm text-slate-500 mb-5">
-              This simulates what Retell sends when the agent decides to request a visual.
+              Enter caller details and issue information to run a visual diagnostic session.
             </p>
 
             <div className="grid grid-cols-2 gap-4 mb-5">
@@ -327,11 +327,11 @@ export default function DemoPage() {
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Issue Preset
                 <span className="ml-2 text-xs font-normal text-slate-400">
-                  ({DEMO_ISSUES.length} issues covered)
+                  ({ISSUE_PRESETS.length} issues covered)
                 </span>
               </label>
               <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto pr-1">
-                {DEMO_ISSUES.map((issue, i) => {
+                {ISSUE_PRESETS.map((issue, i) => {
                   const isSafety =
                     issue.issue_type === 'burning_smell' ||
                     issue.issue_type === 'battery_swelling'
@@ -432,8 +432,7 @@ export default function DemoPage() {
                 Step 2 — Upload Photo or Video
               </h2>
               <p className="text-sm text-slate-500 mb-4">
-                In a live call the parent opens their SMS link. Here, upload any demo image or
-                video to simulate that upload.
+                Upload a photo or video of the vehicle issue to run the visual diagnostic.
               </p>
 
               {step !== 'uploaded' && (
@@ -450,8 +449,7 @@ export default function DemoPage() {
                     />
                     {!uploadFile && (
                       <p className="text-xs text-slate-400 mt-1">
-                        Tip: any photo works for the demo. OpenAI vision is used if
-                        OPENAI_API_KEY is set; otherwise the demo gives deterministic results.
+                        Upload any photo or video of the vehicle issue to trigger the visual analysis.
                       </p>
                     )}
                   </div>
@@ -555,7 +553,7 @@ export default function DemoPage() {
                 Support Case Dashboard
               </Link>
               <button onClick={reset} className="btn-secondary text-sm">
-                Run Another Demo
+                Run Another Test
               </button>
             </div>
           </div>

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       email:         email.trim().toLowerCase(),
       name:          name.trim(),
       role,
-      // For MVP we store the password directly — swap for bcrypt in production
+      // Passwords stored as-is — swap for bcrypt before sharing access widely
       password_hash: password,
       created_at:    now,
     }

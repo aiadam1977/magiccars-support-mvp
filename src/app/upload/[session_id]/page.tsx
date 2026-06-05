@@ -530,7 +530,7 @@ export default function UploadPage() {
       </main>
 
       <footer className="text-center py-4 text-xs text-slate-400">
-        MagicCars Support
+        &copy; {new Date().getFullYear()} MagicCars. All rights reserved.
       </footer>
     </div>
   )

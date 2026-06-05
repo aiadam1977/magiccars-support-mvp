@@ -1,5 +1,5 @@
 /**
- * MagicCars Support MVP — Vercel KV Database
+ * MagicCars Support — Vercel KV Database
  *
  * All functions are async and backed by Vercel KV (Redis).
  * Replaces the local JSON file store that fails on Vercel's read-only filesystem.
@@ -165,7 +165,7 @@ export interface AppUser {
   email: string
   name: string
   role: 'admin' | 'agent'
-  /** bcrypt or plain hash — for MVP we store a salted hash */
+  /** password hash — swap for bcrypt before sharing access widely */
   password_hash: string
   created_at: string
 }

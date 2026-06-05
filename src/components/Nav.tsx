@@ -12,7 +12,7 @@ export default function Nav() {
     { href: '/callers', label: 'Customers' },
     { href: '/templates', label: 'Email Templates' },
     { href: '/team', label: 'Team' },
-    { href: '/demo', label: 'Demo' },
+    { href: '/demo', label: 'Test Session' },
   ]
 
   async function handleLogout() {
@@ -28,7 +28,6 @@ export default function Nav() {
             MC
           </div>
           <span className="font-bold text-lg tracking-tight">MagicCars Support</span>
-          <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full ml-1">MVP</span>
         </div>
         <div className="flex items-center gap-1">
           {links.map(link => (

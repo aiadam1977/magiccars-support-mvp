@@ -1,8 +1,8 @@
 /**
- * MagicCars Support MVP — Visual Analysis Engine
+ * MagicCars Support — Visual Analysis Engine
  *
  * Uses OpenAI vision if OPENAI_API_KEY is set.
- * Falls back to deterministic demo analysis based on issue type.
+ * Falls back to knowledge-base analysis based on issue type.
  */
 
 import { AnalysisResult } from './db'
@@ -45,7 +45,7 @@ Return ONLY a valid JSON object with exactly these fields:
  * Run visual AI analysis on one or more uploaded files.
  * When multiple fileUrls are provided, all images are passed to GPT-4o in a
  * single request so the model can reason across all views at once.
- * Falls back to deterministic demo analysis when OpenAI is not configured or
+ * Falls back to knowledge-base analysis when OpenAI is not configured or
  * when all files are videos.
  */
 export async function runAnalysis(params: {
@@ -69,12 +69,12 @@ export async function runAnalysis(params: {
     try {
       return await runOpenAIAnalysis({ images: imageEntries, issueType, issueDescription, note })
     } catch (err) {
-      console.error('[Analysis] OpenAI vision failed, falling back to demo:', err)
+      console.error('[Analysis] OpenAI vision failed, falling back to knowledge-base analysis:', err)
     }
   }
 
-  // Fallback: deterministic demo analysis
-  return runDemoAnalysis({ issueType, issueDescription, note })
+  // Fallback: knowledge-base driven analysis
+  return runFallbackAnalysis({ issueType, issueDescription, note })
 }
 
 function isImage(fileType: string): boolean {
@@ -150,10 +150,10 @@ async function runOpenAIAnalysis(params: {
 }
 
 /**
- * Deterministic demo analysis based on issue type.
- * Used when OpenAI is not configured or when file is a video.
+ * Knowledge-base driven fallback analysis used when OpenAI is not configured or file is a video.
+ * 
  */
-function runDemoAnalysis(params: {
+function runFallbackAnalysis(params: {
   issueType: string
   issueDescription: string
   note?: string

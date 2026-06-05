@@ -1,5 +1,5 @@
 /**
- * MagicCars Support MVP — Vehicle Knowledge Base
+ * MagicCars Support — Vehicle Knowledge Base
  *
  * Product: Magic Cars 12V 2WD Ride-On Jeep with Manual and Remote Control
  * URL: https://www.magiccars.com/products/12v-2wd-ride-on-jeep-car-with-manual-and-remote-control-options
@@ -57,7 +57,7 @@ const JEEP_SPECS: Record<string, string> = {
 
 // ─── Main Knowledge Base ──────────────────────────────────────────────────────
 
-export const DEMO_VEHICLE: Vehicle = {
+export const VEHICLE_CATALOG: Vehicle = {
   vehicle_id: 'magiccars-12v-2wd-jeep',
   year: '2024',
   make: 'Magic Cars',
@@ -795,7 +795,7 @@ export function matchKnowledgeEntry(
   let bestMatch: KnowledgeEntry | null = null
   let bestScore = 0
 
-  for (const entry of DEMO_VEHICLE.systems) {
+  for (const entry of VEHICLE_CATALOG.systems) {
     let score = 0
     // Exact system_id match is highest priority
     if (issueType === entry.system_id) score += 10
@@ -851,14 +851,14 @@ export function isSafetyEscalation(issueType: string, description: string = ''):
  * Get vehicle display string.
  */
 export function getVehicleDisplayName(): string {
-  return DEMO_VEHICLE.display_name
+  return VEHICLE_CATALOG.display_name
 }
 
 /**
  * Get the knowledge base as a formatted string for the AI prompt.
  */
 export function getKnowledgeBasePrompt(): string {
-  const entries = DEMO_VEHICLE.systems
+  const entries = VEHICLE_CATALOG.systems
     .map(
       (s) => `
 ISSUE: ${s.system_name}
@@ -874,10 +874,10 @@ Recommended Route: ${s.recommended_route}
     )
     .join('\n---\n')
 
-  return `PRODUCT: ${DEMO_VEHICLE.display_name}
-SPECS: Battery ${DEMO_VEHICLE.specifications['Battery']}, Motors ${DEMO_VEHICLE.specifications['Motors']}, Weight Limit ${DEMO_VEHICLE.specifications['Weight Capacity']}, Age ${DEMO_VEHICLE.specifications['Age Range']}
+  return `PRODUCT: ${VEHICLE_CATALOG.display_name}
+SPECS: Battery ${VEHICLE_CATALOG.specifications['Battery']}, Motors ${VEHICLE_CATALOG.specifications['Motors']}, Weight Limit ${VEHICLE_CATALOG.specifications['Weight Capacity']}, Age ${VEHICLE_CATALOG.specifications['Age Range']}
 
-TROUBLESHOOTING ORDER: ${DEMO_VEHICLE.troubleshooting_order.join(' → ')}
+TROUBLESHOOTING ORDER: ${VEHICLE_CATALOG.troubleshooting_order.join(' → ')}
 
 KNOWLEDGE BASE:
 ${entries}`

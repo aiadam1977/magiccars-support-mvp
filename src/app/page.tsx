@@ -295,7 +295,7 @@ export default function DashboardPage() {
           {[
             { href: '/cases', label: 'All Activity', icon: '📋', desc: `${totals.calls_total} records` },
             { href: '/templates', label: 'Email Templates', icon: '✉', desc: 'Manage templates' },
-            { href: '/demo', label: 'Demo Simulator', icon: '🎮', desc: 'Test Harold' },
+            { href: '/demo', label: 'Test Session', icon: '🔬', desc: 'Run a test call' },
           ].map(({ href, label, icon, desc }) => (
             <Link key={href} href={href} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:border-[#E31837]/30 transition-colors flex items-center gap-3">
               <span className="text-xl">{icon}</span>

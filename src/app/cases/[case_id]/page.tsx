@@ -1065,7 +1065,7 @@ export default function CaseDetailPage() {
               <button onClick={cancelEditing} className="btn-secondary text-sm">Cancel</button>
             </>
           )}
-          <Link href="/demo" className="btn-secondary text-sm">New Demo Session</Link>
+          <Link href="/demo" className="btn-secondary text-sm">Test Session</Link>
         </div>
       </div>
     </div>
