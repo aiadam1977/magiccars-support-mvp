@@ -9,6 +9,7 @@ export default function Nav() {
   const links = [
     { href: '/', label: 'Dashboard' },
     { href: '/cases', label: 'All Activity' },
+    { href: '/callers', label: 'Customers' },
     { href: '/templates', label: 'Email Templates' },
     { href: '/team', label: 'Team' },
     { href: '/demo', label: 'Demo' },
